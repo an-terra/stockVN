@@ -1,0 +1,13 @@
+{
+  "name": "stockvn",
+  "private": true,
+  "description": "Chạy API + Vite cùng lúc: npm run dev",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm start --prefix server\" \"npm run dev --prefix frontend\"",
+    "start": "npm start --prefix server",
+    "web": "npm run dev --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
