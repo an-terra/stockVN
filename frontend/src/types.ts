@@ -120,7 +120,7 @@ export type TrackListResponse = {
 }
 
 export type ScanLatest = {
-  generatedAt: string
+  generatedAt: string | null
   timezone: string
   trigger?: string
   scheduleNote?: string
@@ -181,7 +181,7 @@ export type SnapshotResponse = {
 }
 
 export type AtcAlertPayload = {
-  generatedAt: string
+  generatedAt: string | null
   timezone: string
   trigger?: string
   windowLabel?: string

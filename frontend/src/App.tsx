@@ -142,7 +142,7 @@ function App() {
         const r = await fetch(apiUrl('/api/alerts/atc/latest'))
         if (!r.ok) return
         const j = (await r.json()) as AtcAlertPayload
-        if (!cancelled) setAtcPayload(j)
+        if (!cancelled) setAtcPayload(j.generatedAt ? j : null)
       } catch {
         /* chưa chạy job / chưa có file */
       }
@@ -205,7 +205,8 @@ function App() {
           setScheduleInfo((await s.json()) as ScheduleInfo)
         }
         if (sc.ok && !cancelled) {
-          setScanInfo((await sc.json()) as ScanLatest)
+          const latest = (await sc.json()) as ScanLatest
+          setScanInfo(latest.generatedAt ? latest : null)
         }
       } catch {
         /* ignore */

@@ -528,9 +528,17 @@ app.get('/api/chart', async (req, res) => {
 app.get('/api/alerts/atc/latest', (req, res) => {
   try {
     if (!existsSync(ATC_ALERT_FILE)) {
-      return res.status(404).json({
-        detail:
+      return res.json({
+        generatedAt: null,
+        timezone: CRON_TZ,
+        trigger: null,
+        windowLabel: 'ATC',
+        disclaimer:
           'Chưa có lần quét ATC. Chờ phiên 14:30–14:45 (T2–T6) hoặc POST /api/alerts/atc/run.',
+        count: 0,
+        highlightedCount: 0,
+        highlighted: [],
+        items: [],
       })
     }
     const raw = readFileSync(ATC_ALERT_FILE, 'utf8')
@@ -556,8 +564,13 @@ app.post('/api/alerts/atc/run', async (req, res) => {
 app.get('/api/scan/latest', (req, res) => {
   try {
     if (!existsSync(SCAN_FILE)) {
-      return res.status(404).json({
-        detail: 'Chưa có file quét. Chờ lịch cron hoặc gọi POST /api/scan/run.',
+      return res.json({
+        generatedAt: null,
+        timezone: CRON_TZ,
+        trigger: null,
+        scheduleNote: 'Chưa có file quét. Chờ lịch cron hoặc gọi POST /api/scan/run.',
+        count: 0,
+        results: [],
       })
     }
     const raw = readFileSync(SCAN_FILE, 'utf8')
