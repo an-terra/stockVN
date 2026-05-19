@@ -70,10 +70,22 @@ Code trong repo chỉ dùng đến các biến sau trên backend:
 | **`PORT`** | **Có** — Render tự inject số cổng | **Đừng** tự gõ `PORT` trừ khi bạn biết rõ; `server/index.mjs` đã `listen(process.env.PORT)`. Gõ sai có thể lệch với proxy của Render → lỗi health/API. |
 | **`NODE_ENV`** | Image Docker đặt **`NODE_ENV=production`** | Thường **không cần** thêm trên Dashboard. |
 | **`CORS_ORIGINS`** | Không | **Tuỳ chọn.** Chỉ khi trình duyệt gọi API từ **domain khác** hostname Render (SPA tĩnh ở CDN chẳng hạn). Giá trị: nhiều origin, **phân tách dấu phẩy**, ví dụ `https://cdn.example.com,https://staging.example.com`. Mặc định backend vẫn cho `localhost` dev; biến này là **danh sách bổ sung**. |
+| **`DATABASE_URL`** | Có nếu bạn tạo Render PostgreSQL và nối qua Blueprint | **Cần** cho đăng nhập/watchlist theo user. Nếu thiếu, các API `/api/user/*` sẽ báo chưa cấu hình DB. |
+| **`AUTH0_DOMAIN`** | Không | **Cần** cho backend verify JWT, ví dụ `xxx.us.auth0.com`. |
+| **`AUTH0_AUDIENCE`** | Không | **Cần** và phải khớp API Identifier bạn tạo trong Auth0. |
+| **`ADMIN_EMAILS`** | Không | Nhập `admin@an-terra.com` để email này có quyền admin sau khi đăng nhập. |
 
 ### Biến frontend / API khác hostname
 
 Biến **`VITE_*`** chỉ có tác dụng **lúc build** Vite — trong **`Dockerfile`** đã đặt `VITE_API_BASE` rỗng để SPA gọi **`/api/...`** **cùng** domain Render.
+
+Để bật đăng nhập Auth0 trên frontend, build Docker cần có:
+
+- `VITE_AUTH0_DOMAIN`: cùng giá trị với `AUTH0_DOMAIN`.
+- `VITE_AUTH0_CLIENT_ID`: Client ID của Auth0 Single Page Application.
+- `VITE_AUTH0_AUDIENCE`: cùng giá trị với `AUTH0_AUDIENCE`.
+
+Trong Auth0 Dashboard, tạo user `admin@an-terra.com` bằng mật khẩu bạn muốn dùng; không lưu mật khẩu vào code hoặc GitHub.
 
 - Muốn trỏ API sang URL khác: phải **đổi build** (Docker `ARG` + `ENV` build-time) và deploy lại, **không** chỉ khai báo Env trên Render cho runtime SPA đã đóng gói sẵn.
 

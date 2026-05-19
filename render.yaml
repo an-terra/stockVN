@@ -10,3 +10,19 @@ services:
     dockerContext: .
     # Render gán PORT; Express đọc process.env.PORT
     healthCheckPath: /api/watchlist
+    envVars:
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_AUDIENCE
+        sync: false
+      - key: ADMIN_EMAILS
+        value: admin@an-terra.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: stockvn-db
+          property: connectionString
+
+databases:
+  - name: stockvn-db
+    databaseName: stockvn
+    user: stockvn

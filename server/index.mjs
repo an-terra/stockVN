@@ -33,6 +33,19 @@ import {
   buildQuoteSnapshot,
   normalizeSignalMode,
 } from './signalPayload.mjs'
+import { asyncRoute, requireUser } from './auth.mjs'
+import { migrateIfConfigured } from './db.mjs'
+import {
+  addUserTrack,
+  addWatchlistItem,
+  deleteUserTrack,
+  deleteWatchlistItem,
+  listUserTracks,
+  listWatchlist,
+  normalizeSymbol,
+  upsertTrackSnapshot,
+  upsertUser,
+} from './userStore.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Khi có `frontend/dist` (Docker / production), Express phục vụ SPA cùng cổng với `/api`. */
@@ -89,6 +102,72 @@ async function fetchMarkForTrack(symDisplay) {
     markPrice: snap.currentPrice ?? agg.c[lastI],
     markDate: agg.dates[lastI],
     dataProvider: provider,
+  }
+}
+
+async function ensureCurrentUser(req) {
+  const row = await upsertUser(req.auth)
+  return {
+    id: row.id,
+    auth0Sub: row.auth0_sub,
+    email: row.email,
+    name: row.name,
+    picture: row.picture,
+    role: req.auth.role,
+  }
+}
+
+function trackSummary(items) {
+  const withPnl = items.filter((x) => x.evalReady && x.pnlPercent != null)
+  const directional = withPnl.filter((x) => x.action !== 'CHỜ')
+  const correct = directional.filter((x) => x.signalCorrect).length
+  return {
+    total: items.length,
+    evalReadyCount: withPnl.length,
+    correctCount: correct,
+    winRatePercent:
+      directional.length > 0
+        ? Math.round((correct / directional.length) * 1000) / 10
+        : null,
+  }
+}
+
+async function refreshUserTracksForToday(userId, { force = false } = {}) {
+  const tday = todayVN()
+  const tracks = await listUserTracks(userId)
+  for (const rec of tracks) {
+    if (!force && rec.snapshotDate === tday) continue
+    let mark = null
+    try {
+      mark = await fetchMarkForTrack(rec.symbol)
+    } catch {
+      mark = null
+    }
+    const { pnlPercent, signalCorrect } = pnlVsSignal(
+      rec.action,
+      rec.entryPrice,
+      mark?.markPrice,
+    )
+    await upsertTrackSnapshot(rec.id, {
+      snapshotDate: tday,
+      markPrice: mark?.markPrice ?? null,
+      markDate: mark?.markDate ?? null,
+      markProvider: mark?.dataProvider ?? null,
+      pnlPercent,
+      signalCorrect,
+    })
+    await new Promise((r) => setTimeout(r, 320))
+  }
+  const fresh = await listUserTracks(userId)
+  const items = fresh.map((rec) => ({
+    ...rec,
+    evalReady: canEvaluateRecord(rec, tday),
+    todayVN: tday,
+  }))
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: trackSummary(items),
+    items,
   }
 }
 
@@ -768,6 +847,109 @@ app.delete('/api/track/:id', (req, res) => {
   }
 })
 
+app.get(
+  '/api/me',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    res.json({ user })
+  }),
+)
+
+app.get(
+  '/api/user/watchlist',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const items = await listWatchlist(user.id)
+    res.json({ items })
+  }),
+)
+
+app.post(
+  '/api/user/watchlist',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const item = await addWatchlistItem(user.id, req.body ?? {})
+    res.json({ ok: true, item })
+  }),
+)
+
+app.delete(
+  '/api/user/watchlist/:symbol',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const removed = await deleteWatchlistItem(user.id, req.params.symbol)
+    res.json({ ok: true, removed })
+  }),
+)
+
+app.get(
+  '/api/user/track',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const payload = await refreshUserTracksForToday(user.id)
+    res.json(payload)
+  }),
+)
+
+app.post(
+  '/api/user/track/refresh',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const payload = await refreshUserTracksForToday(user.id, { force: true })
+    res.json(payload)
+  }),
+)
+
+app.post(
+  '/api/user/track',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const body = req.body ?? {}
+    const symbol = normalizeSymbol(body.symbol)
+    let entryDate = String(body.entryDate ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)) entryDate = todayVN()
+    let entryPrice = body.entryPrice != null ? Number(body.entryPrice) : NaN
+    if (!Number.isFinite(entryPrice)) {
+      const mark = await fetchMarkForTrack(symbol)
+      if (!mark?.markPrice) {
+        return res.status(502).json({ detail: 'Khong lay duoc gia vao' })
+      }
+      entryPrice = mark.markPrice
+    }
+    const item = await addUserTrack(user.id, {
+      ...body,
+      symbol,
+      entryDate,
+      entryPrice,
+    })
+    res.json({ ok: true, item })
+  }),
+)
+
+app.delete(
+  '/api/user/track/:id',
+  requireUser,
+  asyncRoute(async (req, res) => {
+    const user = await ensureCurrentUser(req)
+    const removed = await deleteUserTrack(user.id, String(req.params.id ?? ''))
+    res.json({ ok: true, removed })
+  }),
+)
+
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err)
+  res.status(err?.statusCode || 500).json({
+    detail: err instanceof Error ? err.message : 'Loi server',
+  })
+})
+
 if (HAS_WEB_DIST) {
   app.use(express.static(WEB_DIST, { index: false }))
 }
@@ -791,6 +973,8 @@ app.use((req, res) => {
 })
 
 const PORT = Number(process.env.PORT) || 8000
+
+await migrateIfConfigured()
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`VN Stock API: http://127.0.0.1:${PORT}`)

@@ -2,18 +2,22 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { StockChart } from './StockChart'
 import type {
   Advice,
+  AuthAppProps,
   AtcAlertPayload,
   ChartBar,
   ChartMeta,
   ChartResponse,
+  CurrentUserResponse,
   PicksResponse,
   ScanLatest,
   ScheduleInfo,
   SnapshotItem,
   SnapshotResponse,
   TrackListResponse,
+  UserWatchlistResponse,
 } from './types'
 import { apiUrl, fetchApiJson } from './apiClient'
+import { fetchAuthJson } from './authClient'
 import './app.css'
 
 const PERIODS = [
@@ -79,7 +83,19 @@ function actionClass(a: string | null | undefined) {
   return 'wait'
 }
 
-function App() {
+function normalizeWatchSymbol(symbol: string) {
+  return symbol.trim().toUpperCase().replace(/\.VN$/i, '').slice(0, 16)
+}
+
+function App({
+  isAuthConfigured,
+  isAuthenticated = false,
+  isAuthLoading = false,
+  authUser,
+  login,
+  logout,
+  getAccessToken,
+}: AuthAppProps) {
   const [serverSymbols, setServerSymbols] = useState<string[]>([])
   const [userWatchlist, setUserWatchlist] = useState<string[]>(readUserWatchlist)
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL)
@@ -119,6 +135,9 @@ function App() {
   )
   const [trackLoading, setTrackLoading] = useState(false)
   const [trackErr, setTrackErr] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUserResponse['user'] | null>(null)
+  const [authErr, setAuthErr] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -157,6 +176,45 @@ function App() {
   useEffect(() => {
     localStorage.setItem(USER_WATCH_KEY, JSON.stringify(userWatchlist))
   }, [userWatchlist])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isAuthenticated || !getAccessToken) {
+        setCurrentUser(null)
+        setAuthErr(null)
+        return
+      }
+      try {
+        const me = await fetchAuthJson<CurrentUserResponse & { detail?: string }>(
+          getAccessToken,
+          '/api/me',
+        )
+        if (!me.response.ok) throw new Error(me.data.detail ?? 'Không tải được user')
+        const watch = await fetchAuthJson<UserWatchlistResponse & { detail?: string }>(
+          getAccessToken,
+          '/api/user/watchlist',
+        )
+        if (!watch.response.ok) {
+          throw new Error(watch.data.detail ?? 'Không tải được watchlist user')
+        }
+        if (!cancelled) {
+          setCurrentUser(me.data.user)
+          const symbols = watch.data.items.map((x) => x.symbol)
+          if (symbols.length) setUserWatchlist(symbols)
+          setAuthErr(null)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setCurrentUser(null)
+          setAuthErr(e instanceof Error ? e.message : 'Không đồng bộ được tài khoản')
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [getAccessToken, isAuthenticated])
 
   useEffect(() => {
     try {
@@ -246,13 +304,21 @@ function App() {
     }
   }, [pickFilterPreset, signalQuality])
 
+  const lastBar = useMemo(() => bars[bars.length - 1], [bars])
+
   const loadTrack = useCallback(async () => {
     setTrackLoading(true)
     setTrackErr(null)
     try {
-      const { response: r, data: j } = await fetchApiJson<
-        TrackListResponse & { detail?: string }
-      >('/api/track')
+      const { response: r, data: j } =
+        isAuthenticated && getAccessToken
+          ? await fetchAuthJson<TrackListResponse & { detail?: string }>(
+              getAccessToken,
+              '/api/user/track',
+            )
+          : await fetchApiJson<TrackListResponse & { detail?: string }>(
+              '/api/track',
+            )
       if (!r.ok) throw new Error(j.detail ?? `Lỗi ${r.status}`)
       setTrackPayload(j as TrackListResponse)
     } catch (e) {
@@ -260,55 +326,121 @@ function App() {
     } finally {
       setTrackLoading(false)
     }
-  }, [])
+  }, [getAccessToken, isAuthenticated])
 
   const addToTrack = useCallback(
-    async (sym: string, act: 'MUA' | 'BÁN' | 'CHỜ') => {
+    async (
+      sym: string,
+      act: 'MUA' | 'BÁN' | 'CHỜ',
+      context?: {
+        source?: string
+        summary?: string
+        score?: number | null
+        payload?: Record<string, unknown>
+      },
+    ) => {
       setTrackErr(null)
       try {
+        const normalized = normalizeWatchSymbol(sym)
         const body: Record<string, unknown> = {
-          symbol: sym.trim().toUpperCase(),
+          symbol: normalized,
           action: act,
         }
         if (
-          sym.trim().toUpperCase() === symbol.trim().toUpperCase() &&
+          normalized === symbol.trim().toUpperCase() &&
           meta?.currentPrice != null
         ) {
           body.entryPrice = meta.currentPrice
         }
-        const { response: r, data: j } = await fetchApiJson<{
-          detail?: string
-          ok?: boolean
-        }>('/api/track', {
+        if (meta?.lastDate || advice?.asOf) {
+          body.entryDate = advice?.asOf ?? meta?.lastDate
+        }
+        body.source = context?.source ?? 'chart'
+        body.signalAsOf = advice?.asOf ?? meta?.lastDate ?? null
+        body.signalSummary = context?.summary ?? advice?.summary ?? null
+        body.signalScore = context?.score ?? advice?.confluence?.score ?? null
+        body.signalPayload =
+          context?.payload ??
+          ({
+            source: 'chart',
+            requestedAction: act,
+            symbol: normalized,
+            advice,
+            meta: {
+              dataProvider: meta?.dataProvider,
+              chartInterval: meta?.chartInterval,
+              lastDate: meta?.lastDate,
+              currentPrice: meta?.currentPrice,
+              confluenceBaseScore: meta?.confluenceBaseScore,
+            },
+            lastBar,
+          } satisfies Record<string, unknown>)
+        const requestInit = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
-        })
+        }
+        const { response: r, data: j } =
+          isAuthenticated && getAccessToken
+            ? await fetchAuthJson<{ detail?: string; ok?: boolean }>(
+                getAccessToken,
+                '/api/user/track',
+                requestInit,
+              )
+            : await fetchApiJson<{ detail?: string; ok?: boolean }>(
+                '/api/track',
+                requestInit,
+              )
         if (!r.ok) throw new Error(j.detail ?? 'Không lưu được')
         await loadTrack()
       } catch (e) {
         setTrackErr(e instanceof Error ? e.message : 'Lỗi lưu')
       }
     },
-    [symbol, meta, loadTrack],
+    [advice, getAccessToken, isAuthenticated, lastBar, loadTrack, meta, symbol],
   )
 
   const removeTrack = useCallback(
     async (id: string) => {
       setTrackErr(null)
       try {
-        const { response: r, data: j } = await fetchApiJson<{ detail?: string }>(
-          `/api/track/${encodeURIComponent(id)}`,
-          { method: 'DELETE' },
-        )
+        const path = isAuthenticated
+          ? `/api/user/track/${encodeURIComponent(id)}`
+          : `/api/track/${encodeURIComponent(id)}`
+        const { response: r, data: j } =
+          isAuthenticated && getAccessToken
+            ? await fetchAuthJson<{ detail?: string }>(getAccessToken, path, {
+                method: 'DELETE',
+              })
+            : await fetchApiJson<{ detail?: string }>(path, { method: 'DELETE' })
         if (!r.ok) throw new Error(j.detail ?? 'Không xóa được')
         await loadTrack()
       } catch (e) {
         setTrackErr(e instanceof Error ? e.message : 'Không xóa được dòng')
       }
     },
-    [loadTrack],
+    [getAccessToken, isAuthenticated, loadTrack],
   )
+
+  const refreshTrackPnl = useCallback(async () => {
+    if (!isAuthenticated || !getAccessToken) {
+      await loadTrack()
+      return
+    }
+    setTrackLoading(true)
+    setTrackErr(null)
+    try {
+      const { response: r, data: j } = await fetchAuthJson<
+        TrackListResponse & { detail?: string }
+      >(getAccessToken, '/api/user/track/refresh', { method: 'POST' })
+      if (!r.ok) throw new Error(j.detail ?? `Lỗi ${r.status}`)
+      setTrackPayload(j as TrackListResponse)
+    } catch (e) {
+      setTrackErr(e instanceof Error ? e.message : 'Không refresh được P&L')
+    } finally {
+      setTrackLoading(false)
+    }
+  }, [getAccessToken, isAuthenticated, loadTrack])
 
   const loadChart = useCallback(
     async (sym: string, p: string, interval: string) => {
@@ -347,8 +479,6 @@ function App() {
     void loadTrack()
   }, [loadTrack])
 
-  const lastBar = useMemo(() => bars[bars.length - 1], [bars])
-
   const chartLiveSignal = useMemo(() => {
     if (!meta || !lastBar) return null
     return {
@@ -379,17 +509,66 @@ function App() {
     setSymbol(s)
   }, [symbolDraft])
 
-  const addToWatch = useCallback(() => {
-    const s = addInput.trim().toUpperCase()
+  const addToWatch = useCallback(async (overrideSymbol?: string) => {
+    const s = normalizeWatchSymbol(overrideSymbol ?? addInput)
     if (s.length < 2 || s.length > 16) return
-    setUserWatchlist((prev) => [...new Set([...prev, s])])
-    setAddInput('')
-    setSymbol(s)
-  }, [addInput])
+    const sourcePayload = {
+      source: 'manual',
+      addedFromSymbol: symbol,
+      advice,
+      meta: meta
+        ? {
+            dataProvider: meta.dataProvider,
+            chartInterval: meta.chartInterval,
+            lastDate: meta.lastDate,
+            currentPrice: meta.currentPrice,
+            confluenceBaseScore: meta.confluenceBaseScore,
+          }
+        : null,
+    }
+    try {
+      if (isAuthenticated && getAccessToken) {
+        const { response, data } = await fetchAuthJson<{ detail?: string }>(
+          getAccessToken,
+          '/api/user/watchlist',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              symbol: s,
+              source: overrideSymbol ? 'chart' : 'manual',
+              sourcePayload,
+            }),
+          },
+        )
+        if (!response.ok) throw new Error(data.detail ?? 'Không lưu watchlist')
+      }
+      setUserWatchlist((prev) => [...new Set([...prev, s])])
+      setAddInput('')
+      setSymbol(s)
+    } catch (e) {
+      setAuthErr(e instanceof Error ? e.message : 'Không lưu được watchlist')
+    }
+  }, [addInput, advice, getAccessToken, isAuthenticated, meta, symbol])
 
-  const removeFromWatch = useCallback((s: string) => {
-    setUserWatchlist((prev) => prev.filter((x) => x !== s))
-  }, [])
+  const removeFromWatch = useCallback(
+    async (s: string) => {
+      try {
+        if (isAuthenticated && getAccessToken) {
+          const { response, data } = await fetchAuthJson<{ detail?: string }>(
+            getAccessToken,
+            `/api/user/watchlist/${encodeURIComponent(s)}`,
+            { method: 'DELETE' },
+          )
+          if (!response.ok) throw new Error(data.detail ?? 'Không xóa watchlist')
+        }
+        setUserWatchlist((prev) => prev.filter((x) => x !== s))
+      } catch (e) {
+        setAuthErr(e instanceof Error ? e.message : 'Không xóa được watchlist')
+      }
+    },
+    [getAccessToken, isAuthenticated],
+  )
 
   return (
     <div className="app">
@@ -440,10 +619,37 @@ function App() {
               </button>
             ))}
           </div>
+          <div className="auth-bar">
+            {!isAuthConfigured ? (
+              <span className="auth-muted">Chưa cấu hình Auth0</span>
+            ) : isAuthLoading ? (
+              <span className="auth-muted">Đang kiểm tra đăng nhập…</span>
+            ) : isAuthenticated ? (
+              <>
+                {authUser?.picture && (
+                  <img className="auth-avatar" src={authUser.picture} alt="" />
+                )}
+                <span className="auth-user">
+                  {currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}
+                </span>
+                {currentUser?.role === 'admin' && (
+                  <span className="auth-role">admin</span>
+                )}
+                <button type="button" className="scan-btn secondary tight" onClick={logout}>
+                  Đăng xuất
+                </button>
+              </>
+            ) : (
+              <button type="button" className="scan-btn secondary tight" onClick={login}>
+                Đăng nhập / đăng ký
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
       {error && <div className="banner error">{error}</div>}
+      {authErr && <div className="banner error">{authErr}</div>}
 
       <div className="layout">
         <aside className="sidebar">
@@ -772,13 +978,13 @@ function App() {
                 value={addInput}
                 onChange={(e) => setAddInput(e.target.value.toUpperCase())}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') addToWatch()
+                  if (e.key === 'Enter') void addToWatch()
                 }}
                 placeholder="Thêm mã (VD: CEO)"
                 maxLength={16}
                 aria-label="Mã chứng khoán thêm vào theo dõi"
               />
-              <button type="button" className="scan-btn secondary" onClick={addToWatch}>
+              <button type="button" className="scan-btn secondary" onClick={() => void addToWatch()}>
                 Thêm
               </button>
             </div>
@@ -843,7 +1049,7 @@ function App() {
                             type="button"
                             className="icon-remove"
                             title={`Bỏ ${s} khỏi theo dõi`}
-                            onClick={() => removeFromWatch(s)}
+                            onClick={() => void removeFromWatch(s)}
                           >
                             ×
                           </button>
@@ -887,7 +1093,17 @@ function App() {
                             : p.action === 'CHỜ'
                               ? 'CHỜ'
                               : 'MUA'
-                        void addToTrack(p.symbol, act)
+                        void addToTrack(p.symbol, act, {
+                          source: 'picks',
+                          summary: p.summary,
+                          score: p.confluenceScore,
+                          payload: {
+                            source: 'picks',
+                            pick: p,
+                            generatedAt: picksMeta.generatedAt,
+                            filters: picksMeta.pickFilters ?? null,
+                          },
+                        })
                       }}
                     >
                       ＋theo dõi
@@ -902,8 +1118,10 @@ function App() {
             <h3>Tổng kết tín hiệu (sau 5 phiên T2–T6)</h3>
             <p className="muted small track-panel-intro">
               Mỗi dòng: ngày vào, giá vào, sau đủ 5 phiên hệ thống tính % lãi/lỗ <em>ảo</em>{' '}
-              (MUA = long; BÁN = kỳ vọng giảm) và đánh dấu đúng/sai hướng. Dữ liệu lưu trên
-              máy chủ (file <code>server/data/signal-track.json</code>).
+              (MUA = long; BÁN = kỳ vọng giảm) và đánh dấu đúng/sai hướng.
+              {isAuthenticated
+                ? ' Dữ liệu đang lưu theo tài khoản của bạn trong PostgreSQL.'
+                : ' Chưa đăng nhập thì dữ liệu lưu demo trên server.'}
             </p>
             {trackPayload && (
               <p className="track-summary-line">
@@ -932,6 +1150,16 @@ function App() {
             >
               {trackLoading ? 'Đang tải bảng…' : 'Làm mới bảng'}
             </button>
+            {isAuthenticated && (
+              <button
+                type="button"
+                className="scan-btn secondary tight"
+                disabled={trackLoading}
+                onClick={() => void refreshTrackPnl()}
+              >
+                Cập nhật lãi/lỗ hôm nay
+              </button>
+            )}
             {trackErr && (
               <p className="picks-error" role="alert">
                 {trackErr}
@@ -964,6 +1192,13 @@ function App() {
                           >
                             {row.symbol}
                           </button>
+                          {(row.source || row.signalSummary) && (
+                            <span className="track-context muted tiny">
+                              {row.source ? ` · ${row.source}` : ''}
+                              {row.signalScore != null ? ` · điểm ${row.signalScore}` : ''}
+                              {row.signalSummary ? ` · ${row.signalSummary}` : ''}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <span
@@ -974,9 +1209,11 @@ function App() {
                         </td>
                         <td>{row.entryDate}</td>
                         <td>
-                          {row.entryPrice.toLocaleString('vi-VN', {
-                            maximumFractionDigits: 3,
-                          })}
+                          {row.entryPrice != null
+                            ? row.entryPrice.toLocaleString('vi-VN', {
+                                maximumFractionDigits: 3,
+                              })
+                            : '—'}
                         </td>
                         <td>{row.evalDueOn}</td>
                         <td>
@@ -1116,6 +1353,13 @@ function App() {
               </p>
               {meta && (
                 <div className="hero-track-btns">
+                  <button
+                    type="button"
+                    className="scan-btn secondary tight"
+                    onClick={() => void addToWatch(symbol)}
+                  >
+                    Lưu mã vào watchlist
+                  </button>
                   <button
                     type="button"
                     className="scan-btn secondary tight"

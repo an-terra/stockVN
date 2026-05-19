@@ -1,3 +1,5 @@
+import type { User } from '@auth0/auth0-react'
+
 export type ChartBar = {
   time: string
   open: number
@@ -95,10 +97,15 @@ export type TrackListItem = {
   symbol: string
   action: 'MUA' | 'BÁN' | 'CHỜ'
   entryDate: string
-  entryPrice: number
+  entryPrice: number | null
   evalDueOn: string
   createdAt: string
   note?: string
+  signalAsOf?: string | null
+  source?: string | null
+  signalSummary?: string | null
+  signalScore?: number | null
+  signalPayload?: Record<string, unknown> | null
   markPrice?: number | null
   markDate?: string | null
   markProvider?: string | null
@@ -202,4 +209,35 @@ export type ScheduleInfo = {
   }>
   note?: string
   atcNote?: string
+}
+
+export type CurrentUserResponse = {
+  user: {
+    id: string
+    auth0Sub: string
+    email: string | null
+    name: string | null
+    picture: string | null
+    role: 'admin' | 'user'
+  }
+}
+
+export type UserWatchlistResponse = {
+  items: Array<{
+    id: string
+    symbol: string
+    source?: string | null
+    sourcePayload?: Record<string, unknown> | null
+    createdAt: string
+  }>
+}
+
+export type AuthAppProps = {
+  isAuthConfigured: boolean
+  isAuthenticated?: boolean
+  isAuthLoading?: boolean
+  authUser?: User
+  login?: () => void
+  logout?: () => void
+  getAccessToken?: () => Promise<string>
 }

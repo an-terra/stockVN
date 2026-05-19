@@ -4,12 +4,16 @@
   "type": "module",
   "scripts": {
     "start": "node index.mjs",
-    "report:week": "node cli/reportWeekMua.mjs"
+    "report:week": "node cli/reportWeekMua.mjs",
+    "db:migrate": "node -e \"import('./db.mjs').then((m)=>m.migrate())\"",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "jose": "^6.2.3",
     "node-cron": "^3.0.3",
+    "pg": "^8.21.0",
     "stockvn": "file:.."
   }
 }
