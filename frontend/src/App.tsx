@@ -3,7 +3,6 @@ import { StockChart } from './StockChart'
 import type {
   Advice,
   AuthAppProps,
-  AtcAlertPayload,
   ChartBar,
   ChartMeta,
   ChartResponse,
@@ -221,7 +220,6 @@ function App({
   const [addInput, setAddInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [atcPayload, setAtcPayload] = useState<AtcAlertPayload | null>(null)
   const [trackPayload, setTrackPayload] = useState<TrackListResponse | null>(
     null,
   )
@@ -253,23 +251,6 @@ function App({
         if (!cancelled && j.symbols?.length) setServerSymbols(j.symbols)
       } catch {
         if (!cancelled) setError('Không tải được watchlist — chạy backend chưa?')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const r = await fetch(apiUrl('/api/alerts/atc/latest'))
-        if (!r.ok) return
-        const j = (await r.json()) as AtcAlertPayload
-        if (!cancelled) setAtcPayload(j.generatedAt ? j : null)
-      } catch {
-        /* chưa chạy job / chưa có file */
       }
     })()
     return () => {
@@ -1044,70 +1025,6 @@ function App({
               Quét universe (thanh khoản, bỏ mã quá ế)
             </button>
             {universeHint && <p className="universe-hint">{universeHint}</p>}
-          </div>
-
-          <div className="atc-box">
-            <h3>Cảnh báo khung ATC (~14:30–14:45)</h3>
-            <p className="muted small">
-              Job chạy <strong>14:33, 14:38, 14:43</strong> (giờ VN, T2–T6). Dữ liệu delay — chỉ
-              hỗ trợ theo dõi kỹ thuật.
-            </p>
-            {atcPayload?.generatedAt ? (
-              <>
-                <p className="atc-time">
-                  Lần chạy:{' '}
-                  {new Date(atcPayload.generatedAt).toLocaleString('vi-VN', {
-                    timeZone: 'Asia/Ho_Chi_Minh',
-                  })}{' '}
-                  <span className="muted">({atcPayload.trigger ?? '—'})</span>
-                </p>
-                <p className="atc-highlight-count">
-                  Mã cần chú ý: <strong>{atcPayload.highlightedCount ?? 0}</strong> /{' '}
-                  {atcPayload.count ?? 0}
-                </p>
-                <ul className="atc-list">
-                  {(atcPayload.highlighted ?? []).slice(0, 12).map((row) => (
-                    <li key={`${row.symbol}-${row.scannedAt}`}>
-                      <button
-                        type="button"
-                        className="link-sym"
-                        onClick={() => setSymbol(row.symbol)}
-                      >
-                        {row.symbol}
-                      </button>
-                      {row.action && (
-                        <span className={`tag sm ${actionClass(row.action)}`}>{row.action}</span>
-                      )}
-                      {row.warnings?.length ? (
-                        <span className="atc-warn-text"> — {row.warnings[0]}</span>
-                      ) : row.error ? (
-                        <span className="atc-warn-text"> — {row.error}</span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="muted small">Chưa có bản ghi — đợi phiên ATC hoặc chạy thử bên dưới.</p>
-            )}
-            <button
-              type="button"
-              className="scan-btn secondary tight"
-              onClick={async () => {
-                try {
-                  const r = await fetch(apiUrl('/api/alerts/atc/run'), { method: 'POST' })
-                  if (!r.ok) return
-                  const j = (await r.json()) as AtcAlertPayload & { ok?: boolean }
-                  const { ok: _o, ...rest } = j
-                  void _o
-                  setAtcPayload(rest as AtcAlertPayload)
-                } catch {
-                  /* ignore */
-                }
-              }}
-            >
-              Chạy cảnh báo ATC ngay (thử)
-            </button>
           </div>
 
           <div className="user-watch-panel">
