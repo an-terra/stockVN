@@ -33,6 +33,13 @@ Mở `http://localhost:5173`. Vite proxy chuyển `/api` → cổng 8000.
 
 **Cron:** cần giữ `npm start` **chạy liên tục** trong ngày giao dịch. Có thể bấm **Chạy quét ngay** trên UI để tạo file quét không chờ lịch.
 
+## Deploy AWS + CI/CD
+
+- **`Dockerfile`**: build frontend (`VITE_API_BASE` trống → gọi `/api` cùng host) + chạy `server/index.mjs`; có `frontend/dist` thì Express phục vụ SPA.
+- **`.github/workflows/deploy-aws.yml`**: push nhánh `main` → build image → push **Amazon ECR** (`:latest` + `:SHA`) → tuỳ chọn **`apprunner start-deployment`**.
+- **Hướng dẫn làm từng bước (AWS + GitHub):** [`docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md`](docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md).
+- Tóm tắt IAM / OIDC: [`docs/DEPLOY_AWS.md`](docs/DEPLOY_AWS.md).
+
 ## Rule (EOD)
 
 - **MUA (edge):** RSI cắt lên sau vùng quá bán (≤35 → >35); **hoặc** breakout đỉnh high 20 phiên trước + volume > TB20; **hoặc** golden cross (EMA20 cắt lên EMA50).

@@ -1,0 +1,72 @@
+# CI/CD: Docker build → Amazon ECR → (tuỳ chọn) App Runner start-deployment.
+#
+# Secrets (GitHub → Settings → Secrets and variables → Actions):
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#   APP_RUNNER_SERVICE_ARN  — tuỳ chọn; ARN dịch vụ App Runner (để redeploy sau push)
+#
+# OIDC (không dùng access key): xem docs/DEPLOY_AWS.md — thay bước credentials.
+#
+# Chỉnh region / tên repo ECR ở khối env bên dưới (hoặc duplicate workflow cho env khác).
+
+name: Deploy AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-aws-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: stockvn
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}"
+          docker build -t "${IMAGE_URI}:${IMAGE_TAG}" -t "${IMAGE_URI}:latest" .
+          docker push "${IMAGE_URI}:${IMAGE_TAG}"
+          docker push "${IMAGE_URI}:latest"
+          echo "Pushed ${IMAGE_URI}:${IMAGE_TAG} and :latest"
+
+      - name: Trigger App Runner deployment
+        env:
+          SERVICE_ARN: ${{ secrets.APP_RUNNER_SERVICE_ARN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SERVICE_ARN}" ]; then
+            echo "APP_RUNNER_SERVICE_ARN không đặt — bỏ qua (bật Automatic deployment trên App Runner hoặc thêm secret)."
+            exit 0
+          fi
+          aws apprunner start-deployment \
+            --service-arn "${SERVICE_ARN}" \
+            --region "${AWS_REGION}"

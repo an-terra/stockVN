@@ -35,6 +35,9 @@ import {
 } from './signalPayload.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+/** Khi có `frontend/dist` (Docker / production), Express phục vụ SPA cùng cổng với `/api`. */
+const WEB_DIST = join(__dirname, '..', 'frontend', 'dist')
+const HAS_WEB_DIST = existsSync(join(WEB_DIST, 'index.html'))
 const SCAN_DIR = join(__dirname, 'data')
 const SCAN_FILE = join(SCAN_DIR, 'latest-scan.json')
 const UNIVERSE_CACHE_FILE = join(SCAN_DIR, 'universe-cache.json')
@@ -303,15 +306,21 @@ async function runAtcWindowScan(trigger = 'cron-atc') {
   return out
 }
 
+const DEFAULT_CORS_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+]
+const EXTRA_CORS = (process.env.CORS_ORIGINS ?? '')
+  .split(/[,]/)
+  .map((s) => s.trim())
+  .filter(Boolean)
+
 const app = express()
 app.use(
   cors({
-    origin: [
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://localhost:4173',
-      'http://127.0.0.1:4173',
-    ],
+    origin: [...DEFAULT_CORS_ORIGINS, ...EXTRA_CORS],
   }),
 )
 app.use(express.json())
@@ -746,8 +755,20 @@ app.delete('/api/track/:id', (req, res) => {
   }
 })
 
+if (HAS_WEB_DIST) {
+  app.use(express.static(WEB_DIST, { index: false }))
+}
+
 /** Tránh Express trả HTML 404 cho /api — frontend parse JSON dễ đọc lỗi. */
 app.use((req, res) => {
+  const pathOnly = String(req.originalUrl ?? req.url).split('?')[0]
+  if (
+    HAS_WEB_DIST &&
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    !pathOnly.startsWith('/api')
+  ) {
+    return res.sendFile(join(WEB_DIST, 'index.html'))
+  }
   if (String(req.originalUrl ?? req.url).startsWith('/api')) {
     return res.status(404).json({
       detail: `Không có API: ${req.method} ${req.originalUrl}. Kiểm tra bạn đã cập nhật code server và chạy lại npm start (có route /api/track).`,
@@ -758,8 +779,11 @@ app.use((req, res) => {
 
 const PORT = Number(process.env.PORT) || 8000
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`VN Stock API: http://127.0.0.1:${PORT}`)
+  if (HAS_WEB_DIST) {
+    console.log(`Web (static): ${WEB_DIST}`)
+  }
   console.log(
     `[cron] Quét watchlist: 9:30, 12:00, 14:00 — ${CRON_TZ} (T2–T6)`,
   )
