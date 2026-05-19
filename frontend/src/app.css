@@ -598,10 +598,13 @@ body.mobile-nav-open {
 }
 
 .stock-chart-wrap {
+  position: relative;
+  width: 100%;
   border-radius: 10px;
   border: 1px solid var(--border);
   overflow: hidden;
   min-height: 460px;
+  height: 460px;
 }
 
 .schedule-strip {
@@ -1549,7 +1552,9 @@ body.mobile-nav-open {
   }
 
   .stock-chart-wrap {
-    min-height: 300px;
+    min-height: 320px;
+    height: min(42dvh, 420px);
+    max-height: 420px;
   }
 
   .hero-track-btns {
@@ -1634,7 +1639,9 @@ body.mobile-nav-open {
   }
 
   .stock-chart-wrap {
-    min-height: 260px;
+    min-height: 280px;
+    height: min(38dvh, 360px);
+    max-height: 360px;
   }
 
   .interval-chip {

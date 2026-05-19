@@ -24,6 +24,18 @@ export type LiveChartSignal = {
 
 type Props = { bars: ChartBar[]; liveSignal?: LiveChartSignal | null }
 
+const CHART_MIN_HEIGHT = 320
+
+function measureChart(el: HTMLElement) {
+  const rect = el.getBoundingClientRect()
+  const width = Math.max(1, Math.floor(rect.width || el.clientWidth))
+  const height = Math.max(
+    CHART_MIN_HEIGHT,
+    Math.floor(rect.height || el.clientHeight),
+  )
+  return { width, height }
+}
+
 export function StockChart({ bars, liveSignal }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -31,7 +43,11 @@ export function StockChart({ bars, liveSignal }: Props) {
     const el = ref.current
     if (!el || bars.length === 0) return
 
+    const initial = measureChart(el)
+
     const chart = createChart(el, {
+      width: initial.width,
+      height: initial.height,
       layout: {
         background: { type: ColorType.Solid, color: BG },
         textColor: TEXT,
@@ -44,8 +60,23 @@ export function StockChart({ bars, liveSignal }: Props) {
       crosshair: { mode: CrosshairMode.MagnetOHLC },
       rightPriceScale: { borderColor: GRID },
       timeScale: { borderColor: GRID },
-      autoSize: true,
     })
+
+    const resizeChart = () => {
+      const { width, height } = measureChart(el)
+      chart.resize(width, height)
+    }
+
+    const ro = new ResizeObserver(() => resizeChart())
+    ro.observe(el)
+
+    const onOrientation = () => {
+      requestAnimationFrame(() => {
+        resizeChart()
+        chart.timeScale().fitContent()
+      })
+    }
+    window.addEventListener('orientationchange', onOrientation)
 
     const candle = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e',
@@ -220,9 +251,17 @@ export function StockChart({ bars, liveSignal }: Props) {
     )
 
     const markers = createSeriesMarkers(candle, markerData)
+
+    resizeChart()
     chart.timeScale().fitContent()
+    requestAnimationFrame(() => {
+      resizeChart()
+      chart.timeScale().fitContent()
+    })
 
     return () => {
+      window.removeEventListener('orientationchange', onOrientation)
+      ro.disconnect()
       markers.detach()
       chart.remove()
     }
