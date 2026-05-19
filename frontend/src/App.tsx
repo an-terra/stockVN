@@ -35,6 +35,8 @@ type PickFilterPreset = keyof typeof PICK_FILTER_PRESET_QUERY
 
 const SIGNAL_QUALITY_KEY = 'vn-stock-signal-quality'
 type SignalQualityMode = 'balanced' | 'strict'
+const DEFAULT_SYMBOL = 'VCB'
+const DEFAULT_USER_WATCHLIST = ['VCB', 'HDB', 'TCB']
 
 function readSignalQuality(): SignalQualityMode {
   try {
@@ -56,9 +58,9 @@ const USER_WATCH_KEY = 'vn-stock-user-watch'
 function readUserWatchlist(): string[] {
   try {
     const raw = localStorage.getItem(USER_WATCH_KEY)
-    if (!raw) return ['CEO', 'VCB', 'HDB']
+    if (!raw) return DEFAULT_USER_WATCHLIST
     const j = JSON.parse(raw) as unknown
-    if (!Array.isArray(j) || !j.length) return ['CEO', 'VCB', 'HDB']
+    if (!Array.isArray(j) || !j.length) return DEFAULT_USER_WATCHLIST
     return [
       ...new Set(
         j
@@ -67,7 +69,7 @@ function readUserWatchlist(): string[] {
       ),
     ]
   } catch {
-    return ['CEO', 'VCB', 'HDB']
+    return DEFAULT_USER_WATCHLIST
   }
 }
 
@@ -80,8 +82,8 @@ function actionClass(a: string | null | undefined) {
 function App() {
   const [serverSymbols, setServerSymbols] = useState<string[]>([])
   const [userWatchlist, setUserWatchlist] = useState<string[]>(readUserWatchlist)
-  const [symbol, setSymbol] = useState('CEO')
-  const [symbolDraft, setSymbolDraft] = useState('CEO')
+  const [symbol, setSymbol] = useState(DEFAULT_SYMBOL)
+  const [symbolDraft, setSymbolDraft] = useState(DEFAULT_SYMBOL)
   const [period, setPeriod] = useState<(typeof PERIODS)[number]['value']>('2y')
   const [chartInterval, setChartInterval] = useState<
     (typeof CHART_INTERVALS)[number]['value']
@@ -243,10 +245,6 @@ function App() {
       setPicksLoading(false)
     }
   }, [pickFilterPreset, signalQuality])
-
-  useEffect(() => {
-    void loadPicks()
-  }, [loadPicks])
 
   const loadTrack = useCallback(async () => {
     setTrackLoading(true)
@@ -596,6 +594,11 @@ function App() {
             >
               {picksLoading ? 'Đang tải gợi ý…' : 'Làm mới gợi ý MUA'}
             </button>
+            {!picksMeta.generatedAt && !picksLoading && !picksError && (
+              <p className="picks-hint muted small">
+                Gợi ý MUA sẽ chỉ tải khi bạn bấm nút để tránh request nặng lúc mở trang.
+              </p>
+            )}
             {picksError && (
               <p className="picks-error" role="alert">
                 {picksError}
