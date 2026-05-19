@@ -606,7 +606,7 @@ function App() {
           <div className="scan-box">
             <span className="label">Quét tự động (watchlist máy chủ)</span>
             <p className="scan-time">
-              {scanInfo
+              {scanInfo?.generatedAt
                 ? new Date(scanInfo.generatedAt).toLocaleString('vi-VN', {
                     timeZone: 'Asia/Ho_Chi_Minh',
                   })
@@ -703,7 +703,7 @@ function App() {
               Job chạy <strong>14:33, 14:38, 14:43</strong> (giờ VN, T2–T6). Dữ liệu delay — chỉ
               hỗ trợ theo dõi kỹ thuật.
             </p>
-            {atcPayload ? (
+            {atcPayload?.generatedAt ? (
               <>
                 <p className="atc-time">
                   Lần chạy:{' '}
