@@ -37,6 +37,7 @@ Backend cần các biến runtime:
 - `AUTH0_DOMAIN`
 - `AUTH0_AUDIENCE`
 - `DATABASE_URL`
+- `ADMIN_EMAILS` (tuỳ chọn): danh sách email admin, phân tách dấu phẩy. Ví dụ `admin@an-terra.com`.
 
 Auth0 application:
 
@@ -51,6 +52,21 @@ Social connections:
 - Google OAuth2 cho Gmail.
 - Facebook Login.
 - LINE Login qua OIDC/OAuth connection trong Auth0.
+
+Tài khoản admin ban đầu:
+
+- Tạo trong Auth0 Dashboard bằng connection `Username-Password-Authentication`.
+- Email admin: `admin@an-terra.com`.
+- Mật khẩu không ghi vào source code, GitHub, docs hay Render env. Nếu mật khẩu từng được gửi qua chat/log, tạo xong nên đổi lại trong Auth0.
+
+## Quyền admin
+
+Backend xác định quyền admin bằng email trong Auth0 token so với biến môi trường `ADMIN_EMAILS`.
+
+- Nếu email user nằm trong `ADMIN_EMAILS`, `/api/me` trả `role: "admin"`.
+- Nếu không, trả `role: "user"`.
+- Quyền admin giai đoạn này dùng để hiển thị badge và làm nền cho các API admin sau này; chưa thêm màn hình quản trị riêng.
+- Không lưu mật khẩu admin trong DB ứng dụng.
 
 ## Database
 
@@ -120,6 +136,7 @@ Phân quyền:
 - Mọi route `/api/user/*` bắt buộc JWT hợp lệ.
 - Backend chỉ thao tác dữ liệu có `user_id` khớp user trong token.
 - Không tin user id gửi từ client.
+- Role admin lấy từ `ADMIN_EMAILS`, không lấy từ request body.
 
 ## Cập nhật lãi/lỗ khi mở trang
 
@@ -146,6 +163,7 @@ Thêm khu vực auth trên header:
   - Nút `Đăng ký`
 - Khi đã đăng nhập:
   - Avatar/tên/email
+  - Badge `Admin` nếu `/api/me` trả `role: "admin"`
   - Nút `Đăng xuất`
 
 Watchlist:
@@ -171,6 +189,7 @@ Thống kê tín hiệu:
 Kiểm thử cần có:
 
 - Backend middleware verify JWT: token thiếu/sai/hợp lệ.
+- Admin role: email trong/ngoài `ADMIN_EMAILS`.
 - DB access: user chỉ thấy dữ liệu của mình.
 - Watchlist CRUD theo user.
 - Track CRUD theo user.

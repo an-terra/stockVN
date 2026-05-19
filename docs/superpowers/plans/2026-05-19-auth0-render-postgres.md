@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Thêm đăng nhập/đăng ký bằng Auth0 (Google/Gmail, LINE, Facebook), lưu watchlist/tín hiệu theo từng user trong Render PostgreSQL, và refresh lãi/lỗ khi user mở thống kê.
+**Goal:** Thêm đăng nhập/đăng ký bằng Auth0 (Google/Gmail, LINE, Facebook), quyền admin qua `ADMIN_EMAILS`, lưu watchlist/tín hiệu theo từng user trong Render PostgreSQL, và refresh lãi/lỗ khi user mở thống kê.
 
-**Architecture:** Frontend dùng Auth0 React SDK để lấy access token và gọi `/api/user/*`. Backend Express verify JWT Auth0 bằng JWKS, upsert user theo `auth0_sub`, thao tác PostgreSQL qua module repository nhỏ. API file-based `/api/track` hiện có được giữ cho demo/public, còn dữ liệu user thật đi qua `/api/user/*`.
+**Architecture:** Frontend dùng Auth0 React SDK để lấy access token và gọi `/api/user/*`. Backend Express verify JWT Auth0 bằng JWKS, upsert user theo `auth0_sub`, tính role `admin` nếu email nằm trong `ADMIN_EMAILS`, thao tác PostgreSQL qua module repository nhỏ. API file-based `/api/track` hiện có được giữ cho demo/public, còn dữ liệu user thật đi qua `/api/user/*`.
 
 **Tech Stack:** React 19, Vite, Auth0 React SDK, Express, `jose` JWT/JWKS, `pg` PostgreSQL, Node built-in test runner.
 
@@ -13,7 +13,7 @@
 ## File Structure
 
 - Create `server/db.mjs`: pool PostgreSQL, migration runner idempotent, SQL helpers.
-- Create `server/auth.mjs`: đọc config Auth0, verify Bearer token, middleware `requireUser`.
+- Create `server/auth.mjs`: đọc config Auth0/admin, verify Bearer token, middleware `requireUser`.
 - Create `server/userStore.mjs`: repository cho users, watchlist, signal tracks, snapshots.
 - Modify `server/index.mjs`: mount auth middleware, user routes, reuse price fetch helpers.
 - Modify `server/package.json`: dependencies `jose`, `pg`, scripts `test`, `db:migrate`.
@@ -27,6 +27,12 @@
 - Modify `frontend/package.json`: dependency `@auth0/auth0-react`.
 - Modify `Dockerfile`: truyền Auth0 build args cho Vite.
 - Modify `render.yaml` and `docs/HUONG_DAN_RENDER.md`: env vars Auth0/Postgres/Deploy Hook.
+
+Admin seed/account note:
+
+- Tạo user `admin@an-terra.com` trực tiếp trong Auth0 Dashboard (`User Management` → `Users` → `Create User`).
+- Không ghi mật khẩu vào code/docs/env.
+- Render env: `ADMIN_EMAILS=admin@an-terra.com`.
 
 ---
 
@@ -201,7 +207,7 @@ Create `server/tests/auth.test.mjs`:
 ```js
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { extractBearerToken, authConfigStatus } from '../auth.mjs'
+import { extractBearerToken, authConfigStatus, roleForEmail } from '../auth.mjs'
 
 test('extractBearerToken reads valid bearer header', () => {
   assert.equal(extractBearerToken('Bearer abc.def.ghi'), 'abc.def.ghi')
@@ -216,6 +222,12 @@ test('authConfigStatus reports missing env names', () => {
   const status = authConfigStatus({})
   assert.equal(status.configured, false)
   assert.deepEqual(status.missing.sort(), ['AUTH0_AUDIENCE', 'AUTH0_DOMAIN'])
+})
+
+test('roleForEmail marks configured admin emails', () => {
+  assert.equal(roleForEmail('admin@an-terra.com', 'admin@an-terra.com'), 'admin')
+  assert.equal(roleForEmail('user@example.com', 'admin@an-terra.com'), 'user')
+  assert.equal(roleForEmail(' ADMIN@AN-TERRA.COM ', 'admin@an-terra.com'), 'admin')
 })
 ```
 
@@ -235,6 +247,16 @@ export function authConfigStatus(env = process.env) {
   if (!env.AUTH0_DOMAIN) missing.push('AUTH0_DOMAIN')
   if (!env.AUTH0_AUDIENCE) missing.push('AUTH0_AUDIENCE')
   return { configured: missing.length === 0, missing }
+}
+
+export function roleForEmail(email, adminEmails = process.env.ADMIN_EMAILS ?? '') {
+  const normalized = String(email ?? '').trim().toLowerCase()
+  if (!normalized) return 'user'
+  const admins = String(adminEmails)
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean)
+  return admins.includes(normalized) ? 'admin' : 'user'
 }
 
 let jwks = null
@@ -275,7 +297,13 @@ export function requireUser(upsertUser) {
         name: payload.name ?? payload.nickname ?? null,
         picture: payload.picture ?? null,
       })
-      req.auth = { payload, user }
+      req.auth = {
+        payload,
+        user: {
+          ...user,
+          role: roleForEmail(payload.email),
+        },
+      }
       next()
     } catch (e) {
       res.status(e.status ?? 401).json({
@@ -656,6 +684,7 @@ export type CurrentUserResponse = {
     email: string | null
     name: string | null
     picture: string | null
+    role: 'admin' | 'user'
   }
 }
 
@@ -711,6 +740,7 @@ const {
   logout,
   getAccessTokenSilently,
 } = useAuth0()
+const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
 ```
 
 - [ ] **Step 2: Add auth header UI**
@@ -727,6 +757,7 @@ Add near the top of the rendered app:
     <>
       {user?.picture && <img className="auth-avatar" src={user.picture} alt="" />}
       <span className="auth-user">{user?.name ?? user?.email ?? 'Tài khoản'}</span>
+      {currentUser?.user.role === 'admin' && <span className="auth-role">Admin</span>}
       <button type="button" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>
         Đăng xuất
       </button>
@@ -742,16 +773,24 @@ Add near the top of the rendered app:
 </div>
 ```
 
-- [ ] **Step 3: Sync user watchlist after login**
+- [ ] **Step 3: Load current user and sync watchlist after login**
 
 Add effect:
 
 ```ts
 useEffect(() => {
   let cancelled = false
-  if (!isAuthenticated) return
+  if (!isAuthenticated) {
+    setCurrentUser(null)
+    return
+  }
   ;(async () => {
     try {
+      const me = await fetchAuthJson<CurrentUserResponse>(
+        getAccessTokenSilently,
+        '/api/me',
+      )
+      if (!cancelled) setCurrentUser(me)
       const data = await fetchAuthJson<UserWatchlistResponse>(
         getAccessTokenSilently,
         '/api/user/watchlist',
@@ -881,6 +920,16 @@ Append to `frontend/src/app.css`:
   color: #64748b;
   font-size: 0.9rem;
 }
+
+.auth-role {
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.15rem 0.45rem;
+  text-transform: uppercase;
+}
 ```
 
 - [ ] **Step 8: Verify**
@@ -948,6 +997,7 @@ Auth0 runtime env:
 - AUTH0_DOMAIN
 - AUTH0_AUDIENCE
 - DATABASE_URL
+- ADMIN_EMAILS (ví dụ admin@an-terra.com)
 
 Auth0 frontend build env:
 - VITE_AUTH0_DOMAIN
