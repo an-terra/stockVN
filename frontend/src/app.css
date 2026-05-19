@@ -165,16 +165,14 @@ body {
   padding-top: 1rem;
 }
 
-.login-warning {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.35);
+.login-notice {
+  margin: 0.85rem 0 0;
+  padding: 0.7rem 0.9rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   color: #fecaca;
-  border-radius: 10px;
-  padding: 0.85rem 1rem;
-}
-
-.login-warning p {
-  margin: 0.45rem 0 0;
+  border-radius: 8px;
+  font-size: 0.85rem;
 }
 
 .login-user-box {

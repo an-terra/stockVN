@@ -104,6 +104,28 @@ function LoginPage({
   currentUser: CurrentUserResponse['user'] | null
   goHome: () => void
 }) {
+  const [pendingNotice, setPendingNotice] = useState<string | null>(null)
+
+  const handleLogin = () => {
+    if (!isAuthConfigured || !login) {
+      setPendingNotice(
+        'Auth0 chưa được cấu hình. Trên Render thêm VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID, VITE_AUTH0_AUDIENCE rồi deploy lại.',
+      )
+      return
+    }
+    login()
+  }
+
+  const handleSignup = () => {
+    if (!isAuthConfigured || !signup) {
+      setPendingNotice(
+        'Auth0 chưa được cấu hình. Trên Render thêm VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID, VITE_AUTH0_AUDIENCE rồi deploy lại.',
+      )
+      return
+    }
+    signup()
+  }
+
   return (
     <div className="login-page">
       <section className="login-card" aria-label="Đăng nhập VN Stock">
@@ -114,15 +136,7 @@ function LoginPage({
           hằng ngày cho bảng tổng kết tín hiệu.
         </p>
 
-        {!isAuthConfigured ? (
-          <div className="login-warning" role="alert">
-            <strong>Auth0 chưa được cấu hình cho bản build hiện tại.</strong>
-            <p>
-              Trên Render cần thêm `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`,
-              `VITE_AUTH0_AUDIENCE`, rồi deploy lại bằng Clear build cache.
-            </p>
-          </div>
-        ) : isAuthLoading ? (
+        {isAuthLoading ? (
           <p className="muted">Đang kiểm tra phiên đăng nhập…</p>
         ) : isAuthenticated ? (
           <div className="login-user-box">
@@ -136,13 +150,19 @@ function LoginPage({
           </div>
         ) : (
           <div className="login-actions">
-            <button type="button" className="scan-btn" onClick={login}>
+            <button type="button" className="scan-btn" onClick={handleLogin}>
               Đăng nhập
             </button>
-            <button type="button" className="scan-btn secondary" onClick={signup}>
+            <button type="button" className="scan-btn secondary" onClick={handleSignup}>
               Đăng ký tài khoản
             </button>
           </div>
+        )}
+
+        {pendingNotice && (
+          <p className="login-notice" role="alert">
+            {pendingNotice}
+          </p>
         )}
 
         <div className="login-actions secondary-actions">
