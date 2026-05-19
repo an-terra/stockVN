@@ -1,5 +1,6 @@
-# syntax=docker/dockerfile:1
 # Build SPA + chạy Express (API + static) một cổng — Render / App Runner / ECS / EC2.
+# Không dùng `# syntax=docker/dockerfile:1` để tránh BuildKit kéo image frontend rồi lỗi
+# "frontend grpc server closed unexpectedly" trên một số máy/CI.
 
 FROM node:22-alpine AS web-build
 WORKDIR /app
