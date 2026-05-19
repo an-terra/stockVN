@@ -23,8 +23,17 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
+  overflow-x: hidden;
+}
+
+body.mobile-nav-open {
+  overflow: hidden;
 }
 
 #root {
@@ -106,6 +115,26 @@ body {
 
 .top-bar-spacer {
   flex: 1 1 auto;
+}
+
+.mobile-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--heading);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-nav-backdrop {
+  display: none;
 }
 
 .top-brand {
@@ -316,12 +345,6 @@ body {
   display: grid;
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   gap: 1rem;
-}
-
-@media (max-width: 800px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
 }
 
 .sidebar {
@@ -1357,7 +1380,72 @@ body {
 
 /* ===== Mobile responsive ===== */
 
-@media (max-width: 800px) {
+@media (max-width: 1024px) {
+  .mobile-nav-toggle {
+    display: inline-flex;
+  }
+
+  .mobile-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .top-bar {
+    z-index: 60;
+    padding-top: max(0.45rem, env(safe-area-inset-top));
+  }
+
+  .layout {
+    display: block;
+  }
+
+  .main {
+    width: 100%;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+    width: min(88vw, 340px);
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+    border-left: 0;
+    border-top: 0;
+    border-bottom: 0;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .sidebar.sidebar--open {
+    transform: translateX(0);
+    box-shadow: 8px 0 40px rgba(0, 0, 0, 0.45);
+  }
+
+  .symbol-list {
+    max-height: none;
+  }
+
+  .header .subtitle {
+    display: none;
+  }
+
   #root {
     padding: 0.75rem 0.85rem 1.5rem;
   }
@@ -1520,6 +1608,10 @@ body {
 }
 
 @media (max-width: 480px) {
+  .chart-caption-extra {
+    display: none;
+  }
+
   .app h1 {
     font-size: 1rem;
   }

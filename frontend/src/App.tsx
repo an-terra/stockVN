@@ -240,6 +240,16 @@ function App({
     useState<CurrentUserResponse['user'] | null>(null)
   const [authErr, setAuthErr] = useState<string | null>(null)
   const [routePath, setRoutePath] = useState(() => window.location.pathname)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  useEffect(() => {
+    document.body.classList.toggle('mobile-nav-open', mobileNavOpen)
+    return () => document.body.classList.remove('mobile-nav-open')
+  }, [mobileNavOpen])
+
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [symbol])
 
   const navigateTo = useCallback((path: string) => {
     window.history.pushState({}, '', path)
@@ -693,6 +703,15 @@ function App({
             <span className="top-brand-dot" aria-hidden="true" />
             VN Stock
           </button>
+          <button
+            type="button"
+            className="mobile-nav-toggle"
+            aria-expanded={mobileNavOpen}
+            aria-controls="app-sidebar"
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            Mã
+          </button>
           <div className="top-bar-spacer" />
           {isAuthLoading ? (
             <span className="auth-muted">Đang kiểm tra…</span>
@@ -779,8 +798,20 @@ function App({
       {error && <div className="banner error">{error}</div>}
       {authErr && <div className="banner error">{authErr}</div>}
 
+      {mobileNavOpen ? (
+        <button
+          type="button"
+          className="mobile-nav-backdrop"
+          aria-label="Đóng menu mã và theo dõi"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      ) : null}
+
       <div className="layout">
-        <aside className="sidebar">
+        <aside
+          id="app-sidebar"
+          className={`sidebar${mobileNavOpen ? ' sidebar--open' : ''}`}
+        >
           <h2>Mã & theo dõi</h2>
 
           <div className="symbol-select-block">
