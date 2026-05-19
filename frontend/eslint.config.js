@@ -18,5 +18,9 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Preset react-hooks recommended (v7+) — quá chặt với fetch + spinner trong useEffect.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])
