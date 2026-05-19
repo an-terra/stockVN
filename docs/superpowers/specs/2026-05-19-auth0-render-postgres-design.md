@@ -87,6 +87,8 @@ watchlist_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,
   symbol text not null,
+  source text,
+  source_payload jsonb,
   created_at timestamptz not null default now(),
   unique (user_id, symbol)
 )
@@ -98,6 +100,11 @@ signal_tracks (
   action text not null check (action in ('MUA', 'BÁN', 'CHỜ')),
   entry_date date not null,
   entry_price numeric not null,
+  signal_as_of date,
+  source text,
+  signal_summary text,
+  signal_score numeric,
+  signal_payload jsonb,
   note text,
   created_at timestamptz not null default now()
 )
@@ -129,10 +136,10 @@ API yêu cầu đăng nhập:
 
 - `GET /api/me`: trả user hiện tại, upsert user nếu lần đầu.
 - `GET /api/user/watchlist`: danh sách mã theo dõi của user.
-- `POST /api/user/watchlist`: thêm mã theo dõi.
+- `POST /api/user/watchlist`: thêm mã theo dõi, có thể kèm `source` và `sourcePayload` để lưu bối cảnh user chọn từ chart/picks/snapshot.
 - `DELETE /api/user/watchlist/:symbol`: xóa mã theo dõi.
 - `GET /api/user/track`: danh sách tín hiệu theo user kèm snapshot lãi/lỗ mới nhất.
-- `POST /api/user/track`: thêm tín hiệu MUA/BÁN/CHỜ theo user.
+- `POST /api/user/track`: thêm tín hiệu MUA/BÁN/CHỜ theo user; lưu cả snapshot tín hiệu tại thời điểm chọn như `signalSummary`, `signalScore`, `signalAsOf`, `signalPayload`, `source`.
 - `DELETE /api/user/track/:id`: xóa tín hiệu của user.
 - `POST /api/user/track/refresh`: refresh giá và cập nhật snapshot lãi/lỗ cho ngày hiện tại.
 
@@ -144,6 +151,19 @@ Phân quyền:
 - Role admin lấy từ `ADMIN_EMAILS`, không lấy từ request body.
 
 Response `/api/user/track` và `/api/user/track/refresh` phải cùng shape với `TrackListResponse`: `{ generatedAt, summary, items }`. Các số từ PostgreSQL (`numeric`) được convert về `number | null` trước khi trả frontend.
+
+Khi user bấm theo dõi một mã do app khuyến nghị (ví dụ app gợi ý CTG), backend phải lưu cả:
+
+- mã cổ phiếu (`symbol`)
+- hành động tại thời điểm đó (`action`: MUA/BÁN/CHỜ)
+- giá vào hoặc giá hiện tại (`entryPrice`)
+- ngày/timestamp tín hiệu (`signalAsOf`)
+- nguồn người dùng bấm theo dõi (`source`: `chart`, `picks`, `snapshot`, `manual`)
+- tóm tắt khuyến nghị (`signalSummary`)
+- điểm hội tụ (`signalScore`)
+- payload JSON tối giản của tín hiệu (`signalPayload`) gồm TP/SL, lý do, cảnh báo, provider nếu có
+
+Nhờ vậy màn hình tổng kết tín hiệu không chỉ biết user theo dõi “CTG”, mà còn biết CTG được theo dõi vì app từng khuyến nghị gì ở thời điểm đó.
 
 ## Cập nhật lãi/lỗ khi mở trang
 
@@ -177,12 +197,14 @@ Watchlist:
 
 - Nếu chưa đăng nhập: giữ xem demo/local, nhưng khi lưu theo dõi thì yêu cầu đăng nhập.
 - Nếu đã đăng nhập: đọc/ghi watchlist từ API user.
+- Khi bấm theo dõi từ chart/picks/snapshot, frontend gửi kèm context tín hiệu hiện tại để backend lưu vào watchlist và/hoặc signal track.
 
 Thống kê tín hiệu:
 
 - Dữ liệu lấy từ `/api/user/track`.
 - Có trạng thái đang cập nhật lãi/lỗ.
 - Có nút refresh thủ công gọi `/api/user/track/refresh`.
+- Hiển thị thông tin gốc lúc user chọn theo dõi: action ban đầu, summary, điểm hội tụ, ngày tín hiệu, entry price, TP/SL nếu có.
 
 ## Error handling
 
@@ -201,6 +223,7 @@ Kiểm thử cần có:
 - DB access: user chỉ thấy dữ liệu của mình.
 - Watchlist CRUD theo user.
 - Track CRUD theo user.
+- Lưu đúng context khuyến nghị khi user theo dõi mã từ chart/picks/snapshot (ví dụ CTG): source, summary, score, signal payload.
 - Refresh lãi/lỗ tính đúng `pnl_percent`.
 - Frontend build/lint.
 

@@ -43,6 +43,7 @@ Corrections from review before implementation:
 - Return the same `TrackListResponse` shape from `/api/user/track` and `/api/user/track/refresh`: `{ generatedAt, summary, items }`.
 - Convert PostgreSQL `numeric` strings to JavaScript numbers before returning JSON.
 - Refresh P&L only when today's snapshot is missing, except when user explicitly presses refresh.
+- Persist recommendation context when the user follows a symbol from the app (chart/picks/snapshot): source, original action, summary, score, as-of date, entry price, TP/SL, reasons, warnings, and provider. This makes the signal summary screen show why the user followed CTG, not only that CTG is in a list.
 
 ---
 
@@ -120,6 +121,8 @@ export async function migrate() {
       id uuid primary key default gen_random_uuid(),
       user_id uuid not null references users(id) on delete cascade,
       symbol text not null,
+      source text,
+      source_payload jsonb,
       created_at timestamptz not null default now(),
       unique (user_id, symbol)
     )
@@ -132,6 +135,11 @@ export async function migrate() {
       action text not null check (action in ('MUA', 'BÁN', 'CHỜ')),
       entry_date date not null,
       entry_price numeric not null,
+      signal_as_of date,
+      source text,
+      signal_summary text,
+      signal_score numeric,
+      signal_payload jsonb,
       note text,
       created_at timestamptz not null default now()
     )
@@ -150,8 +158,23 @@ export async function migrate() {
       unique (track_id, snapshot_date)
     )
   `)
+  await query(`
+    alter table watchlist_items
+      add column if not exists source text,
+      add column if not exists source_payload jsonb
+  `)
+  await query(`
+    alter table signal_tracks
+      add column if not exists signal_as_of date,
+      add column if not exists source text,
+      add column if not exists signal_summary text,
+      add column if not exists signal_score numeric,
+      add column if not exists signal_payload jsonb
+  `)
 }
 ```
+
+The `alter table ... if not exists` statements make migration safe if an earlier deploy already created the basic tables.
 
 Add startup helper:
 
@@ -191,6 +214,18 @@ test('CHO keeps pnl but no correctness', () => {
     pnlPercent: -5,
     signalCorrect: null,
   })
+})
+
+test('recommendation context is stored separately from pnl snapshots', () => {
+  const signalPayload = {
+    takeProfit1: 112,
+    stopLoss: 95,
+    reasons: ['EMA20 > EMA50'],
+    warnings: ['Dữ liệu delay'],
+    dataProvider: 'yahoo',
+  }
+  assert.equal(signalPayload.takeProfit1, 112)
+  assert.equal(signalPayload.reasons[0], 'EMA20 > EMA50')
 })
 ```
 
@@ -402,17 +437,23 @@ export async function listWatchlist(userId) {
   return r.rows
 }
 
-export async function addWatchlistItem(userId, symbol) {
-  const sym = normalizeSymbol(symbol)
+export async function addWatchlistItem(userId, row) {
+  const sym = normalizeSymbol(row?.symbol ?? row)
   if (sym.length < 2 || sym.length > 16) throw new Error('symbol không hợp lệ')
   const r = await query(
     `
-    insert into watchlist_items (user_id, symbol)
-    values ($1, $2)
-    on conflict (user_id, symbol) do nothing
-    returning symbol, created_at as "createdAt"
+    insert into watchlist_items (user_id, symbol, source, source_payload)
+    values ($1, $2, $3, $4)
+    on conflict (user_id, symbol)
+    do update set source = excluded.source, source_payload = excluded.source_payload
+    returning symbol, source, source_payload as "sourcePayload", created_at as "createdAt"
     `,
-    [userId, sym],
+    [
+      userId,
+      sym,
+      row?.source ? String(row.source).slice(0, 40) : null,
+      row?.sourcePayload ? JSON.stringify(row.sourcePayload) : null,
+    ],
   )
   return r.rows[0] ?? { symbol: sym }
 }
@@ -426,19 +467,56 @@ export async function deleteWatchlistItem(userId, symbol) {
   return r.rowCount
 }
 
+function pickSignalPayload(row) {
+  if (!row.signalPayload || typeof row.signalPayload !== 'object') return null
+  const p = row.signalPayload
+  return {
+    takeProfit1: p.takeProfit1 ?? null,
+    takeProfit2: p.takeProfit2 ?? null,
+    stopLoss: p.stopLoss ?? null,
+    resistanceHint: p.resistanceHint ?? null,
+    supportEma20: p.supportEma20 ?? null,
+    supportEma50: p.supportEma50 ?? null,
+    reasons: Array.isArray(p.reasons) ? p.reasons.slice(0, 12) : [],
+    warnings: Array.isArray(p.warnings) ? p.warnings.slice(0, 12) : [],
+    dataProvider: p.dataProvider ?? null,
+  }
+}
+
 export async function addUserTrack(userId, row) {
   const sym = normalizeSymbol(row.symbol)
   const entryDate = row.entryDate || todayVN()
   const entryPrice = Number(row.entryPrice)
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) throw new Error('entryPrice không hợp lệ')
   const action = row.action === 'BÁN' ? 'BÁN' : row.action === 'CHỜ' ? 'CHỜ' : 'MUA'
+  const signalScore =
+    row.signalScore == null || !Number.isFinite(Number(row.signalScore))
+      ? null
+      : Number(row.signalScore)
+  const signalPayload = pickSignalPayload(row)
   const r = await query(
     `
-    insert into signal_tracks (user_id, symbol, action, entry_date, entry_price, note)
-    values ($1, $2, $3, $4, $5, $6)
-    returning id, symbol, action, entry_date as "entryDate", entry_price as "entryPrice", note, created_at as "createdAt"
+    insert into signal_tracks
+      (user_id, symbol, action, entry_date, entry_price, signal_as_of, source, signal_summary, signal_score, signal_payload, note)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    returning id, symbol, action, entry_date as "entryDate", entry_price as "entryPrice",
+      signal_as_of as "signalAsOf", source, signal_summary as "signalSummary",
+      signal_score as "signalScore", signal_payload as "signalPayload",
+      note, created_at as "createdAt"
     `,
-    [userId, sym, action, entryDate, entryPrice, row.note ? String(row.note).slice(0, 280) : null],
+    [
+      userId,
+      sym,
+      action,
+      entryDate,
+      entryPrice,
+      row.signalAsOf || entryDate,
+      row.source ? String(row.source).slice(0, 40) : 'manual',
+      row.signalSummary ? String(row.signalSummary).slice(0, 500) : null,
+      signalScore,
+      signalPayload ? JSON.stringify(signalPayload) : null,
+      row.note ? String(row.note).slice(0, 280) : null,
+    ],
   )
   return { ...r.rows[0], evalDueOn: addTradingSessionsFromEntry(entryDate, 5) }
 }
@@ -453,6 +531,8 @@ export async function listUserTracks(userId) {
     `
     select
       t.id, t.symbol, t.action, t.entry_date as "entryDate", t.entry_price as "entryPrice",
+      t.signal_as_of as "signalAsOf", t.source, t.signal_summary as "signalSummary",
+      t.signal_score as "signalScore", t.signal_payload as "signalPayload",
       t.note, t.created_at as "createdAt",
       s.snapshot_date as "snapshotDate", s.mark_price as "markPrice", s.mark_date as "markDate",
       s.pnl_percent as "pnlPercent", s.signal_correct as "signalCorrect", s.data_provider as "dataProvider"
@@ -472,9 +552,12 @@ export async function listUserTracks(userId) {
     const entryPrice = Number(row.entryPrice)
     const markPrice = row.markPrice == null ? null : Number(row.markPrice)
     const pnlPercent = row.pnlPercent == null ? null : Number(row.pnlPercent)
+    const signalScore = row.signalScore == null ? null : Number(row.signalScore)
     return {
       ...row,
       entryPrice: Number.isFinite(entryPrice) ? entryPrice : 0,
+      signalScore:
+        signalScore != null && Number.isFinite(signalScore) ? signalScore : null,
       markPrice: markPrice != null && Number.isFinite(markPrice) ? markPrice : null,
       pnlPercent:
         pnlPercent != null && Number.isFinite(pnlPercent) ? pnlPercent : null,
@@ -776,7 +859,18 @@ export type CurrentUserResponse = {
 }
 
 export type UserWatchlistResponse = {
-  items: Array<{ symbol: string; createdAt?: string }>
+  items: Array<{
+    symbol: string
+    source?: string | null
+    sourcePayload?: {
+      action?: string | null
+      asOf?: string | null
+      summary?: string | null
+      confluenceScore?: number | null
+      entryPrice?: number | null
+    } | null
+    createdAt?: string
+  }>
 }
 ```
 
@@ -908,7 +1002,17 @@ Where current code adds/removes `userWatchlist`, call:
 if (isAuthenticated) {
   await fetchAuthJson(getAccessTokenSilently, '/api/user/watchlist', {
     method: 'POST',
-    body: JSON.stringify({ symbol: nextSymbol }),
+    body: JSON.stringify({
+      symbol: nextSymbol,
+      source: 'chart',
+      sourcePayload: {
+        action: chartLiveSignal?.action ?? advice?.action ?? 'CHỜ',
+        asOf: chartLiveSignal?.asOf ?? advice?.asOf ?? meta?.lastDate,
+        summary: advice?.summary ?? null,
+        confluenceScore: advice?.confluence?.score ?? meta?.confluenceBaseScore ?? null,
+        entryPrice: meta?.currentPrice ?? meta?.lastClose ?? null,
+      },
+    }),
   })
 }
 ```
@@ -947,6 +1051,32 @@ Update add/delete similarly:
 ```ts
 const trackPath = isAuthenticated ? '/api/user/track' : '/api/track'
 ```
+
+When adding a track from a chart recommendation, send the recommendation context:
+
+```ts
+const body: Record<string, unknown> = {
+  symbol: sym.trim().toUpperCase(),
+  action: act,
+  source: 'chart',
+  signalAsOf: advice?.asOf ?? meta?.lastDate ?? undefined,
+  signalSummary: advice?.summary ?? undefined,
+  signalScore: advice?.confluence?.score ?? meta?.confluenceBaseScore ?? undefined,
+  signalPayload: {
+    takeProfit1: advice?.takeProfit1 ?? null,
+    takeProfit2: advice?.takeProfit2 ?? null,
+    stopLoss: advice?.stopLoss ?? null,
+    resistanceHint: advice?.resistanceHint ?? null,
+    supportEma20: advice?.supportEma20 ?? null,
+    supportEma50: advice?.supportEma50 ?? null,
+    reasons: bars.at(-1)?.reasons ?? [],
+    warnings: [],
+    dataProvider: meta?.dataProvider ?? null,
+  },
+}
+```
+
+When adding a track from a pick row, use `source: 'picks'` and include `summary`, `confluenceScore`, `confluenceBias`, `warnings`, and `dataProvider` from that pick in `signalPayload`.
 
 and delete:
 
@@ -1200,7 +1330,7 @@ git push origin main
 
 ## Self-Review
 
-- Spec coverage: Auth0, Render PostgreSQL, per-user watchlist, per-user signal tracking, refresh-on-open P&L, Render docs, and testing are covered by Tasks 1-7.
+- Spec coverage: Auth0, Render PostgreSQL, per-user watchlist, persisted recommendation context, per-user signal tracking, refresh-on-open P&L, Render docs, and testing are covered by Tasks 1-7.
 - Placeholder scan: no open-ended “fill later” implementation steps remain; each task has exact files, snippets, and commands.
 - Type consistency: backend uses `auth0Sub`, `user_id`, `TrackListResponse`; frontend helpers consistently use `fetchAuthJson` and `/api/user/*`.
 
