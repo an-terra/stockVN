@@ -1,93 +1,119 @@
-# CI/CD: Docker build → Amazon ECR → (tuỳ chọn) App Runner start-deployment.
-#
-# Secrets (GitHub → Settings → Secrets and variables → Actions):
-#   AWS_ACCESS_KEY_ID
-#   AWS_SECRET_ACCESS_KEY
-#   APP_RUNNER_SERVICE_ARN  — tuỳ chọn; ARN dịch vụ App Runner (để redeploy sau push)
-#
-# OIDC (không dùng access key): xem docs/DEPLOY_AWS.md — thay bước credentials.
-#
-# Chỉnh region / tên repo ECR ở khối env bên dưới (hoặc duplicate workflow cho env khác).
-
-name: Deploy AWS
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-concurrency:
-  group: deploy-aws-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  AWS_REGION: ap-southeast-1
-  ECR_REPOSITORY: stockvn
-
-jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # Tránh lỗi mơ hồ "Could not load credentials from any providers"
-      # khi chưa tạo Repository secrets hoặc nhập sai tên biến.
-      - name: Kiểm tra AWS Secrets trên GitHub
-        shell: bash
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
-            echo "::error title=Thiếu AWS credentials::Repository chưa có đủ Secrets cho IAM access key."
-            echo ""
-            echo "Làm trên GitHub: Repo → Settings → Secrets and variables → Actions"
-            echo "→ New repository secret — thêm ĐÚNG hai tên sau:"
-            echo "  • AWS_ACCESS_KEY_ID"
-            echo "  • AWS_SECRET_ACCESS_KEY"
-            echo ""
-            echo "(Không dùng Environment secrets trừ khi workflow khai báo environment.)"
-            exit 1
-          fi
-          echo "OK: đã có AWS_ACCESS_KEY_ID và AWS_SECRET_ACCESS_KEY."
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push image
-        env:
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}"
-          docker build -t "${IMAGE_URI}:${IMAGE_TAG}" -t "${IMAGE_URI}:latest" .
-          docker push "${IMAGE_URI}:${IMAGE_TAG}"
-          docker push "${IMAGE_URI}:latest"
-          echo "Pushed ${IMAGE_URI}:${IMAGE_TAG} and :latest"
-
-      - name: Trigger App Runner deployment
-        env:
-          SERVICE_ARN: ${{ secrets.APP_RUNNER_SERVICE_ARN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SERVICE_ARN}" ]; then
-            echo "APP_RUNNER_SERVICE_ARN không đặt — bỏ qua (bật Automatic deployment trên App Runner hoặc thêm secret)."
-            exit 0
-          fi
-          aws apprunner start-deployment \
-            --service-arn "${SERVICE_ARN}" \
-            --region "${AWS_REGION}"
+# CI/CD: Docker build → Amazon ECR → (tuỳ chọn) App Runner start-deployment.
+#
+# Cách A — Access key (mặc định):
+#   Repo → Settings → Secrets and variables → Actions → Repository secrets:
+#     AWS_ACCESS_KEY_ID
+#     AWS_SECRET_ACCESS_KEY
+#
+# Cách B — OIDC (không lưu key trên GitHub):
+#   Chỉ thêm secret AWS_ROLE_TO_ASSUME = ARN của IAM role (trust GitHub OIDC).
+#   Chi tiết: docs/DEPLOY_AWS.md
+#
+# Tuỳ chọn: APP_RUNNER_SERVICE_ARN — ép redeploy App Runner sau push.
+#
+# Chỉnh AWS_REGION / ECR_REPOSITORY trong env bên dưới.
+
+name: Deploy AWS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-aws-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: stockvn
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Chọn OIDC hoặc access key; in URL Secrets để dễ mở đúng trang.
+      - name: Kiểm tra cấu hình đăng nhập AWS
+        id: aws-auth
+        shell: bash
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -n "${AWS_ROLE_TO_ASSUME}" ]; then
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+            echo "OK: đăng nhập AWS qua OIDC (secret AWS_ROLE_TO_ASSUME)."
+            exit 0
+          fi
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error title=Thiếu AWS credentials::Chưa có OIDC hoặc access key."
+            echo ""
+            echo "Mở trang Secrets của đúng repo này:"
+            echo "  https://github.com/${GITHUB_REPOSITORY}/settings/secrets/actions"
+            echo ""
+            echo "Tab «Actions» → phần «Repository secrets» → New repository secret."
+            echo "Thêm đúng hai tên (copy nguyên):"
+            echo "  • AWS_ACCESS_KEY_ID"
+            echo "  • AWS_SECRET_ACCESS_KEY"
+            echo ""
+            echo "Không tạo ở Dependabot secrets / Codespaces nếu không chạy workflow tương ứng."
+            echo "Nếu secrets nằm trong Environment: workflow phải có khối «environment:»."
+            echo ""
+            echo "Hoặc dùng OIDC: chỉ thêm AWS_ROLE_TO_ASSUME (ARN role IAM)."
+            exit 1
+          fi
+          echo "mode=keys" >> "$GITHUB_OUTPUT"
+          echo "OK: đăng nhập AWS qua access key."
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.aws-auth.outputs.mode == 'oidc'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys)
+        if: steps.aws-auth.outputs.mode == 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}"
+          docker build -t "${IMAGE_URI}:${IMAGE_TAG}" -t "${IMAGE_URI}:latest" .
+          docker push "${IMAGE_URI}:${IMAGE_TAG}"
+          docker push "${IMAGE_URI}:latest"
+          echo "Pushed ${IMAGE_URI}:${IMAGE_TAG} and :latest"
+
+      - name: Trigger App Runner deployment
+        env:
+          SERVICE_ARN: ${{ secrets.APP_RUNNER_SERVICE_ARN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SERVICE_ARN}" ]; then
+            echo "APP_RUNNER_SERVICE_ARN không đặt — bỏ qua (bật Automatic deployment trên App Runner hoặc thêm secret)."
+            exit 0
+          fi
+          aws apprunner start-deployment \
+            --service-arn "${SERVICE_ARN}" \
+            --region "${AWS_REGION}"

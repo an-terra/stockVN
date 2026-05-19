@@ -86,20 +86,27 @@ Tạo **ECR** và **IAM** trước → **chạy CI một lần** để có image
 
 ## Phần C — Cấu hình GitHub Secrets và chạy CI lần đầu
 
-1. Mở repo trên GitHub → **Settings** → **Secrets and variables** → **Actions**.
-2. **New repository secret** — thêm **đúng tên** sau:
+1. Mở **đúng repo** chứa code (ví dụ `https://github.com/an-terra/stockVN`) → **Settings** → **Secrets and variables** → **Actions**.
+2. Vào tab **Secrets** → cuộn tới **Repository secrets** (không nhầm **Environment secrets** trừ khi workflow của bạn có khai báo `environment:`).
+3. **New repository secret** — thêm **đúng tên** sau (copy nguyên, không đổi hoa/thường):
 
    | Tên secret | Giá trị |
    |------------|---------|
    | `AWS_ACCESS_KEY_ID` | Access key ID vừa tạo |
    | `AWS_SECRET_ACCESS_KEY` | Secret access key |
 
-3. **Kiểm tra workflow:**
+   Đường dẫn trực tiếp (thay `OWNER/REPO`):  
+   `https://github.com/OWNER/REPO/settings/secrets/actions`
+
+   **Hay gặp lỗi:** tạo secret ở tab **Dependabot** hoặc **Codespaces** thay vì **Actions** → workflow **Deploy AWS** không thấy → báo *Repository chưa có đủ Secrets*.  
+   Secret **Organization** phải được gán quyền truy cập repo này (Policies của Organization).
+
+4. **Kiểm tra workflow:**
    - File `.github/workflows/deploy-aws.yml` có `AWS_REGION` và `ECR_REPOSITORY`:
      - `AWS_REGION: ap-southeast-1`
      - `ECR_REPOSITORY: stockvn`  
      Nếu bạn dùng region/tên repo khác → **sửa hai dòng này trong YAML rồi commit**.
-4. **Nhánh chạy CI:** workflow chỉ chạy khi **push vào `main`**.  
+5. **Nhánh chạy CI:** workflow chỉ chạy khi **push vào `main`**.  
    Nếu nhánh của bạn là `master` → hoặc đổi tên nhánh thành `main`, hoặc sửa trong YAML:
 
    ```yaml
@@ -109,14 +116,14 @@ Tạo **ECR** và **IAM** trước → **chạy CI một lần** để có image
 
    thành `branches: [master]` (hoặc cả hai).
 
-5. Push code lên `main`:
+6. Push code lên `main`:
    ```bash
    git add .
    git commit -m "Chuẩn bị deploy AWS"
    git push origin main
    ```
 
-6. GitHub → tab **Actions** → workflow **Deploy AWS** → mở run mới nhất:
+7. GitHub → tab **Actions** → workflow **Deploy AWS** → mở run mới nhất:
    - **Xanh**: image đã lên ECR (`:latest` và tag theo commit SHA).
    - **Đỏ**: đọc log bước lỗi (thường là sai region, sai tên repo ECR, hoặc IAM thiếu quyền).
 
@@ -181,6 +188,7 @@ Thay **`THAY_BẰNG_SERVICE_ARN_CỦA_BẠN`** đúng một dòng ARN (có dấu
 
 | Hiện tượng | Việc nên làm |
 |------------|----------------|
+| `Repository chưa có đủ Secrets` / exit code 1 ở bước kiểm tra | Workflow **không** thấy `AWS_ACCESS_KEY_ID` và `AWS_SECRET_ACCESS_KEY`. Vào `https://github.com/<OWNER>/<REPO>/settings/secrets/actions` → **Repository secrets** (tab **Actions**) → thêm đúng hai tên trên. Không nhầm Dependabot/Codespaces secrets. Hoặc chỉ thêm **`AWS_ROLE_TO_ASSUME`** để đăng nhập bằng OIDC (không cần access key). |
 | `Credentials could not be loaded` / `Could not load credentials from any providers` | **Chưa có hoặc sai tên Secrets.** Vào **Repo → Settings → Secrets and variables → Actions** → tab **Secrets** → đảm bảo có đúng hai secret **Repository** (không chỉ Environment): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. Tên phải khớp **từng ký tự** (không thêm khoảng trắng, không đổi hoa/thường). Sau đó **Re-run jobs** workflow. Nếu workflow fork từ repo khác hoặc PR từ fork: secrets không được chia sẻ — chạy trên nhánh trong repo của bạn. |
 | CI báo `denied` / `Unauthorized` khi push ECR | Kiểm tra region; IAM user có policy ECR; secret GitHub đúng user đó. |
 | App Runner **Failed** / health đỏ | Xem tab **Logs** của App Runner; thử đổi **Port** (8000 ↔ 8080) khớp với biến `PORT` trong log container. |

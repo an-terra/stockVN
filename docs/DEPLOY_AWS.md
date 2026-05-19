@@ -2,6 +2,10 @@
 
 **Hướng dẫn từng bước (AWS Console + GitHub):** xem **[HUONG_DAN_TRIEN_KHAI_CHI_TIET.md](./HUONG_DAN_TRIEN_KHAI_CHI_TIET.md)**.
 
+Đăng nhập AWS trong Actions:
+- **Access key:** Repository secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+- **Hoặc OIDC:** secret `AWS_ROLE_TO_ASSUME` (ARN IAM role trust GitHub).
+
 Ứng dụng chạy **một container**: Express phục vụ **`/api/*`** và **SPA** (`frontend/dist`) cùng cổng (đọc biến **`PORT`** — App Runner sẽ inject).
 
 ## Kiến trúc CI/CD
