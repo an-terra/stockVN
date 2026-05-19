@@ -138,7 +138,18 @@ function LoginPage({
           <p className="muted">Đang kiểm tra phiên đăng nhập…</p>
         ) : isAuthenticated ? (
           <div className="login-user-box">
-            {authUser?.picture && <img className="auth-avatar large" src={authUser.picture} alt="" />}
+            <span className="auth-avatar auth-avatar-fallback large" aria-hidden="true">
+              {(
+                currentUser?.name ??
+                authUser?.name ??
+                currentUser?.email ??
+                'U'
+              )
+                .toString()
+                .trim()
+                .charAt(0)
+                .toUpperCase()}
+            </span>
             <div>
               <strong>{currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}</strong>
               <p className="muted small">
@@ -687,22 +698,18 @@ function App({
             <span className="auth-muted">Đang kiểm tra…</span>
           ) : isAuthenticated ? (
             <div className="auth-pill">
-              {authUser?.picture ? (
-                <img className="auth-avatar" src={authUser.picture} alt="" />
-              ) : (
-                <span className="auth-avatar auth-avatar-fallback" aria-hidden="true">
-                  {(
-                    currentUser?.name ??
-                    authUser?.name ??
-                    currentUser?.email ??
-                    'U'
-                  )
-                    .toString()
-                    .trim()
-                    .charAt(0)
-                    .toUpperCase()}
-                </span>
-              )}
+              <span className="auth-avatar auth-avatar-fallback" aria-hidden="true">
+                {(
+                  currentUser?.name ??
+                  authUser?.name ??
+                  currentUser?.email ??
+                  'U'
+                )
+                  .toString()
+                  .trim()
+                  .charAt(0)
+                  .toUpperCase()}
+              </span>
               <span className="auth-user">
                 {currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}
               </span>

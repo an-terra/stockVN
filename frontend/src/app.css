@@ -157,6 +157,11 @@ body {
   color: #0f1014;
   font-weight: 700;
   font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.auth-avatar-fallback.large {
+  font-size: 1.15rem;
 }
 
 .auth-pill-btn {
