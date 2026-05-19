@@ -1,0 +1,12 @@
+# Blueprint Render — https://render.com/docs/infrastructure-as-code
+# Deploy: Dashboard → Blueprints → New Blueprint Instance → chọn repo + branch chứa file này.
+# Hoặc tạo Web Service thủ công (Docker) không bắt buộc dùng file này.
+
+services:
+  - type: web
+    name: stockvn
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Render gán PORT; Express đọc process.env.PORT
+    healthCheckPath: /api/watchlist

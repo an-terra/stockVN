@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Build SPA + chạy Express (API + static) một cổng — phù hợp App Runner / ECS / EC2.
+# Build SPA + chạy Express (API + static) một cổng — Render / App Runner / ECS / EC2.
 
 FROM node:22-alpine AS web-build
 WORKDIR /app

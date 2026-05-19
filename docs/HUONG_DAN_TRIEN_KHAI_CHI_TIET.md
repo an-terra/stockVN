@@ -213,3 +213,4 @@ Thay **`THAY_BẰNG_SERVICE_ARN_CỦA_BẠN`** đúng một dòng ARN (có dấu
 ## Tham khảo thêm
 
 - Tóm tắt kiến trúc và OIDC: [`DEPLOY_AWS.md`](./DEPLOY_AWS.md).
+- Deploy **Render** (Docker / Blueprint): [`HUONG_DAN_RENDER.md`](./HUONG_DAN_RENDER.md).

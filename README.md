@@ -33,13 +33,12 @@ Mở `http://localhost:5173`. Vite proxy chuyển `/api` → cổng 8000.
 
 **Cron:** cần giữ `npm start` **chạy liên tục** trong ngày giao dịch. Có thể bấm **Chạy quét ngay** trên UI để tạo file quét không chờ lịch.
 
-## Deploy AWS + CI/CD
+## Deploy + CI/CD
 
-- **CI** (không cần AWS): `.github/workflows/ci.yml` — mỗi **push / PR** vào `main`: lint + build frontend, **Docker build** thử (không push).
-- **CD**: `.github/workflows/deploy-aws.yml` — push **`main`** có secrets AWS → build image → **Amazon ECR** → tuỳ chọn App Runner.
+- **CI**: `.github/workflows/ci.yml` — **push / PR** `main`: lint + build frontend, **Docker build** thử.
 - **`Dockerfile`**: một image API + SPA (`frontend/dist`).
-- **Hướng dẫn làm từng bước (AWS + GitHub):** [`docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md`](docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md).
-- Tóm tắt IAM / OIDC: [`docs/DEPLOY_AWS.md`](docs/DEPLOY_AWS.md).
+- **Render**: [`docs/HUONG_DAN_RENDER.md`](docs/HUONG_DAN_RENDER.md) — Web Service (**Docker**) hoặc Blueprint **`render.yaml`**; auto-deploy từ Git (không cần AWS).
+- **AWS** (tuỳ chọn): `.github/workflows/deploy-aws.yml` + [`docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md`](docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md), [`docs/DEPLOY_AWS.md`](docs/DEPLOY_AWS.md).
 
 ## Rule (EOD)
 
