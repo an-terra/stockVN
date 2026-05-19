@@ -88,11 +88,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: -1rem -1.25rem 0.75rem;
-  padding: 0.5rem 1.25rem;
-  background: rgba(15, 16, 20, 0.92);
+  margin: -1rem -1.25rem 1rem;
+  padding: 0.55rem 1.25rem;
+  background: linear-gradient(180deg, rgba(15, 16, 20, 0.96), rgba(15, 16, 20, 0.86));
   border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
 }
 
 .top-bar-inner {
@@ -100,9 +100,97 @@ body {
   margin: 0 auto;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  gap: 0.6rem;
+  min-height: 2.4rem;
+}
+
+.top-bar-spacer {
+  flex: 1 1 auto;
+}
+
+.top-brand {
+  display: inline-flex;
+  align-items: center;
   gap: 0.5rem;
-  min-height: 2rem;
+  background: transparent;
+  border: 0;
+  color: var(--heading);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  border-radius: 6px;
+}
+
+.top-brand:hover {
+  background: rgba(192, 132, 252, 0.08);
+}
+
+.top-brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #c084fc, #6366f1);
+  box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.18);
+}
+
+.auth-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.25rem 0.4rem 0.25rem 0.3rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.auth-pill .auth-user {
+  max-width: 160px;
+}
+
+.auth-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #c084fc, #6366f1);
+  color: #0f1014;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.auth-pill-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.auth-pill-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+}
+
+.auth-cta {
+  background: linear-gradient(135deg, #c084fc, #6366f1);
+  border: 0;
+  color: #0f1014;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.25);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.auth-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(99, 102, 241, 0.35);
 }
 
 .auth-avatar {

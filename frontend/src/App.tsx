@@ -696,12 +696,35 @@ function App({
     <div className="app">
       <div className="top-bar" role="region" aria-label="Tài khoản">
         <div className="top-bar-inner">
+          <button
+            type="button"
+            className="top-brand"
+            onClick={() => navigateTo('/')}
+            title="Về trang chủ"
+          >
+            <span className="top-brand-dot" aria-hidden="true" />
+            VN Stock
+          </button>
+          <div className="top-bar-spacer" />
           {isAuthLoading ? (
-            <span className="auth-muted">Đang kiểm tra đăng nhập…</span>
+            <span className="auth-muted">Đang kiểm tra…</span>
           ) : isAuthenticated ? (
-            <>
-              {authUser?.picture && (
+            <div className="auth-pill">
+              {authUser?.picture ? (
                 <img className="auth-avatar" src={authUser.picture} alt="" />
+              ) : (
+                <span className="auth-avatar auth-avatar-fallback" aria-hidden="true">
+                  {(
+                    currentUser?.name ??
+                    authUser?.name ??
+                    currentUser?.email ??
+                    'U'
+                  )
+                    .toString()
+                    .trim()
+                    .charAt(0)
+                    .toUpperCase()}
+                </span>
               )}
               <span className="auth-user">
                 {currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}
@@ -709,14 +732,19 @@ function App({
               {currentUser?.role === 'admin' && (
                 <span className="auth-role">admin</span>
               )}
-              <button type="button" className="scan-btn secondary tight" onClick={logout}>
+              <button
+                type="button"
+                className="auth-pill-btn"
+                onClick={logout}
+                title="Đăng xuất"
+              >
                 Đăng xuất
               </button>
-            </>
+            </div>
           ) : (
             <button
               type="button"
-              className="scan-btn secondary tight"
+              className="auth-cta"
               onClick={() => navigateTo('/login')}
             >
               Đăng nhập / đăng ký
