@@ -10,7 +10,6 @@ import type {
   CurrentUserResponse,
   PicksResponse,
   ScanLatest,
-  ScheduleInfo,
   SnapshotItem,
   SnapshotResponse,
   TrackListResponse,
@@ -202,7 +201,6 @@ function App({
   const [meta, setMeta] = useState<ChartMeta | null>(null)
   const [advice, setAdvice] = useState<Advice | null>(null)
   const [scanInfo, setScanInfo] = useState<ScanLatest | null>(null)
-  const [scheduleInfo, setScheduleInfo] = useState<ScheduleInfo | null>(null)
   const [symbolCheckFailed, setSymbolCheckFailed] = useState<string[] | null>(
     null,
   )
@@ -363,13 +361,7 @@ function App({
     let cancelled = false
     ;(async () => {
       try {
-        const [s, sc] = await Promise.all([
-          fetch(apiUrl('/api/schedule')),
-          fetch(apiUrl('/api/scan/latest')),
-        ])
-        if (s.ok && !cancelled) {
-          setScheduleInfo((await s.json()) as ScheduleInfo)
-        }
+        const sc = await fetch(apiUrl('/api/scan/latest'))
         if (sc.ok && !cancelled) {
           const latest = (await sc.json()) as ScanLatest
           setScanInfo(latest.generatedAt ? latest : null)
@@ -582,8 +574,12 @@ function App({
   }, [symbol, period, chartInterval, loadChart])
 
   useEffect(() => {
-    void loadTrack()
-  }, [loadTrack])
+    if (isAuthenticated) {
+      void refreshTrackPnl()
+    } else {
+      void loadTrack()
+    }
+  }, [isAuthenticated, loadTrack, refreshTrackPnl])
 
   const chartLiveSignal = useMemo(() => {
     if (!meta || !lastBar) return null
@@ -756,18 +752,8 @@ function App({
         <div>
           <h1>VN Stock — biểu đồ & khuyến nghị minh họa</h1>
           <p className="subtitle">
-            Yahoo (.VN/.HN) → VNDirect → TCBS · Mục tiêu/stop gợi ý theo ATR · Quét 9:30 /
-            12:00 / 14:00 (giờ VN)
+            Nguồn dữ liệu: Yahoo · VNDirect · TCBS — chỉ mang tính tham khảo kỹ thuật.
           </p>
-          {scheduleInfo && (
-            <p className="schedule-strip">
-              {scheduleInfo.crons.map((c) => (c.label ? `${c.time} (${c.label})` : c.time)).join(' · ')} —{' '}
-              {scheduleInfo.timezone}
-              {scheduleInfo.atcNote && (
-                <span className="schedule-atc"> · {scheduleInfo.atcNote}</span>
-              )}
-            </p>
-          )}
         </div>
         <div className="header-controls">
           <div className="period-row">
