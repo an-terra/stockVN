@@ -84,6 +84,27 @@ body {
   min-height: 2rem;
 }
 
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: -1rem -1.25rem 0.75rem;
+  padding: 0.5rem 1.25rem;
+  background: rgba(15, 16, 20, 0.92);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(6px);
+}
+
+.top-bar-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-height: 2rem;
+}
+
 .auth-avatar {
   width: 26px;
   height: 26px;

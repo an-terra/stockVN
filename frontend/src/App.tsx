@@ -194,7 +194,7 @@ function App({
   const [userWatchlist, setUserWatchlist] = useState<string[]>(readUserWatchlist)
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL)
   const [symbolDraft, setSymbolDraft] = useState(DEFAULT_SYMBOL)
-  const [period, setPeriod] = useState<(typeof PERIODS)[number]['value']>('2y')
+  const [period, setPeriod] = useState<(typeof PERIODS)[number]['value']>('6mo')
   const [chartInterval, setChartInterval] = useState<
     (typeof CHART_INTERVALS)[number]['value']
   >('1d')
@@ -694,6 +694,36 @@ function App({
 
   return (
     <div className="app">
+      <div className="top-bar" role="region" aria-label="Tài khoản">
+        <div className="top-bar-inner">
+          {isAuthLoading ? (
+            <span className="auth-muted">Đang kiểm tra đăng nhập…</span>
+          ) : isAuthenticated ? (
+            <>
+              {authUser?.picture && (
+                <img className="auth-avatar" src={authUser.picture} alt="" />
+              )}
+              <span className="auth-user">
+                {currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}
+              </span>
+              {currentUser?.role === 'admin' && (
+                <span className="auth-role">admin</span>
+              )}
+              <button type="button" className="scan-btn secondary tight" onClick={logout}>
+                Đăng xuất
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="scan-btn secondary tight"
+              onClick={() => navigateTo('/login')}
+            >
+              Đăng nhập / đăng ký
+            </button>
+          )}
+        </div>
+      </div>
       <header className="header">
         <div>
           <h1>VN Stock — biểu đồ & khuyến nghị minh họa</h1>
@@ -740,42 +770,6 @@ function App({
                 {iv.label}
               </button>
             ))}
-          </div>
-          <div className="auth-bar">
-            {!isAuthConfigured ? (
-              <button
-                type="button"
-                className="scan-btn secondary tight"
-                onClick={() => navigateTo('/login')}
-              >
-                Đăng nhập / đăng ký
-              </button>
-            ) : isAuthLoading ? (
-              <span className="auth-muted">Đang kiểm tra đăng nhập…</span>
-            ) : isAuthenticated ? (
-              <>
-                {authUser?.picture && (
-                  <img className="auth-avatar" src={authUser.picture} alt="" />
-                )}
-                <span className="auth-user">
-                  {currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}
-                </span>
-                {currentUser?.role === 'admin' && (
-                  <span className="auth-role">admin</span>
-                )}
-                <button type="button" className="scan-btn secondary tight" onClick={logout}>
-                  Đăng xuất
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="scan-btn secondary tight"
-                onClick={() => navigateTo('/login')}
-              >
-                Đăng nhập / đăng ký
-              </button>
-            )}
           </div>
         </div>
       </header>
