@@ -291,7 +291,7 @@ function App() {
         setTrackErr(e instanceof Error ? e.message : 'Lỗi lưu')
       }
     },
-    [symbol, meta?.currentPrice, loadTrack],
+    [symbol, meta, loadTrack],
   )
 
   const removeTrack = useCallback(
