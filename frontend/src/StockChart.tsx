@@ -228,11 +228,5 @@ export function StockChart({ bars, liveSignal }: Props) {
     }
   }, [bars, liveSignal])
 
-  return (
-    <div
-      ref={ref}
-      className="stock-chart-wrap"
-      style={{ width: '100%', minHeight: 420 }}
-    />
-  )
+  return <div ref={ref} className="stock-chart-wrap" />
 }
