@@ -571,11 +571,21 @@ export function buildQuoteSnapshot(raw, dataProvider, intervalNorm) {
     ) {
       currentPrice = yq.regularMarketPrice
       changeHint =
-        'Giá tham chiếu từ Yahoo (có thể trễ vài phút; không thay giá sàn trực tiếp).'
+        'Giá hiện tại lấy từ Yahoo (có thể trễ vài phút); đóng tham chiếu là phiên trước đã điều chỉnh quyền/cổ tức (nếu có).'
     }
+    // Yahoo meta.previousClose là close RAW (chưa trừ ex-right / cổ tức của VN).
+    // Chỉ dùng làm fallback khi chuỗi bar không có prevBarClose, hoặc khi chênh lệch nhỏ (< 2%).
     const yPrev = yq.previousClose ?? yq.chartPreviousClose
     if (yPrev != null && Number.isFinite(yPrev)) {
-      previousReference = yPrev
+      if (previousReference == null) {
+        previousReference = yPrev
+      } else if (
+        Number.isFinite(previousReference) &&
+        Math.abs(previousReference) > 1e-12 &&
+        Math.abs(yPrev - previousReference) / Math.abs(previousReference) <= 0.02
+      ) {
+        previousReference = yPrev
+      }
     }
   }
 
