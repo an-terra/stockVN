@@ -1,0 +1,45 @@
+# CI: kiểm tra mỗi push / PR vào main — không cần AWS Secrets.
+# CD (deploy): workflow Deploy AWS (.github/workflows/deploy-aws.yml).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend — lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: npm ci & lint & build
+        run: |
+          set -euo pipefail
+          npm ci --prefix frontend
+          npm run lint --prefix frontend
+          npm run build --prefix frontend
+
+  docker-image:
+    name: Docker — build image (dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker build
+        run: docker build -t stockvn:ci .

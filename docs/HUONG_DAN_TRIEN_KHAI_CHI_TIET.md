@@ -1,6 +1,11 @@
 # Hướng dẫn triển khai AWS + CI/CD — làm lần lượt
 
-Tài liệu này hướng dẫn **từng bước trên AWS Console và GitHub**. Stack: **Docker → Amazon ECR → AWS App Runner**, CI bằng **GitHub Actions** (file `.github/workflows/deploy-aws.yml`).
+Tài liệu này hướng dẫn **từng bước trên AWS Console và GitHub**. Stack: **Docker → Amazon ECR → AWS App Runner**.
+
+- **CI (không cần AWS):** `.github/workflows/ci.yml` — lint + build frontend + `docker build` thử trên mọi push/PR vào `main`.
+- **CD (deploy):** `.github/workflows/deploy-aws.yml` — push `main` + có credentials AWS → đẩy image lên ECR / App Runner.
+
+**Giả định:** Bạn đã có tài khoản AWS và đã đưa code lên một repo GitHub (remote).
 
 **Giả định:** Bạn đã có tài khoản AWS và đã đưa code lên một repo GitHub (remote).
 
@@ -10,12 +15,12 @@ Tài liệu này hướng dẫn **từng bước trên AWS Console và GitHub**.
 
 | Việc | Ghi chú |
 |------|--------|
-| Repo GitHub có đủ code (Dockerfile, `.github/workflows/deploy-aws.yml`) | Đẩy (`push`) nhánh **`main`** |
+| Repo GitHub có đủ code (`Dockerfile`, `.github/workflows/ci.yml`, `deploy-aws.yml`) | Đẩy nhánh **`main`** |
 | Đã chọn **Region** | Ví dụ **Singapore `ap-southeast-1`** — giữ một region cho mọi bước |
 | Biết **AWS Account ID** | Console → click tên account góc phải → hoặc IAM Dashboard có hiển thị |
 
 **Quan trọng — thứ tự đề xuất:**  
-Tạo **ECR** và **IAM** trước → **chạy CI một lần** để có image `:latest` trong ECR → **rồi mới tạo App Runner** trỏ vào image đó (App Runner cần image đã tồn tại).
+Tạo **ECR** và **IAM** trước → **chạy workflow Deploy AWS một lần** (push `main`) để có image `:latest` trong ECR → **rồi mới tạo App Runner** trỏ vào image đó (App Runner cần image đã tồn tại).
 
 ---
 
@@ -193,7 +198,8 @@ Thay **`THAY_BẰNG_SERVICE_ARN_CỦA_BẠN`** đúng một dòng ARN (có dấu
 | CI báo `denied` / `Unauthorized` khi push ECR | Kiểm tra region; IAM user có policy ECR; secret GitHub đúng user đó. |
 | App Runner **Failed** / health đỏ | Xem tab **Logs** của App Runner; thử đổi **Port** (8000 ↔ 8080) khớp với biến `PORT` trong log container. |
 | Trắng trang nhưng API được | Kiểm tra build frontend trong Docker log CI; đảm bảo có `frontend/dist` trong image. |
-| CI không chạy | Nhánh không phải `main`; hoặc workflow file không nằm đúng `.github/workflows/deploy-aws.yml`. |
+| CI workflow **CI** báo đỏ (lint/build/Docker) | Vào Actions → workflow **CI** → xem log: sửa lỗi ESLint/TypeScript hoặc Dockerfile trước khi merge PR. Workflow này **không** cần AWS. |
+| Workflow **Deploy AWS** hoặc **CI** không xuất hiện | Kiểm tra push/PR có vào nhánh **`main`** không; file YAML có trong `.github/workflows/`. |
 
 ---
 

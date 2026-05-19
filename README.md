@@ -35,8 +35,9 @@ Mở `http://localhost:5173`. Vite proxy chuyển `/api` → cổng 8000.
 
 ## Deploy AWS + CI/CD
 
-- **`Dockerfile`**: build frontend (`VITE_API_BASE` trống → gọi `/api` cùng host) + chạy `server/index.mjs`; có `frontend/dist` thì Express phục vụ SPA.
-- **`.github/workflows/deploy-aws.yml`**: push nhánh `main` → build image → push **Amazon ECR** (`:latest` + `:SHA`) → tuỳ chọn **`apprunner start-deployment`**.
+- **CI** (không cần AWS): `.github/workflows/ci.yml` — mỗi **push / PR** vào `main`: lint + build frontend, **Docker build** thử (không push).
+- **CD**: `.github/workflows/deploy-aws.yml` — push **`main`** có secrets AWS → build image → **Amazon ECR** → tuỳ chọn App Runner.
+- **`Dockerfile`**: một image API + SPA (`frontend/dist`).
 - **Hướng dẫn làm từng bước (AWS + GitHub):** [`docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md`](docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md).
 - Tóm tắt IAM / OIDC: [`docs/DEPLOY_AWS.md`](docs/DEPLOY_AWS.md).
 

@@ -6,6 +6,8 @@
 - **Access key:** Repository secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
 - **Hoặc OIDC:** secret `AWS_ROLE_TO_ASSUME` (ARN IAM role trust GitHub).
 
+**CI (không AWS):** workflow `ci.yml` — lint + build frontend + `docker build` trên push/PR `main`.
+
 Ứng dụng chạy **một container**: Express phục vụ **`/api/*`** và **SPA** (`frontend/dist`) cùng cổng (đọc biến **`PORT`** — App Runner sẽ inject).
 
 ## Kiến trúc CI/CD
