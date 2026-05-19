@@ -20,6 +20,7 @@
 - Create `server/tests/auth.test.mjs`: unit tests cho header parsing/config behavior.
 - Create `server/tests/pnl.test.mjs`: unit tests cho P&L logic đang dùng lại.
 - Create `frontend/src/authConfig.ts`: Auth0 env parsing và `isAuthConfigured`.
+- Create `frontend/src/AuthRoot.tsx`: chỉ gọi `useAuth0()` khi nằm dưới `Auth0Provider`.
 - Create `frontend/src/authClient.ts`: helper gọi API có token.
 - Modify `frontend/src/main.tsx`: wrap `Auth0Provider` khi cấu hình đủ.
 - Modify `frontend/src/App.tsx`: auth UI, user watchlist/track integration, refresh P&L.
@@ -33,6 +34,15 @@ Admin seed/account note:
 - Tạo user `admin@an-terra.com` trực tiếp trong Auth0 Dashboard (`User Management` → `Users` → `Create User`).
 - Không ghi mật khẩu vào code/docs/env.
 - Render env: `ADMIN_EMAILS=admin@an-terra.com`.
+
+Corrections from review before implementation:
+
+- Do not call `useAuth0()` from `App` unless it is rendered under `Auth0Provider`; otherwise app crashes when Auth0 env is absent.
+- Run PostgreSQL migration at backend startup when `DATABASE_URL` exists.
+- Wrap async Express handlers with an `asyncRoute` helper; Express 4 does not catch rejected promises by default.
+- Return the same `TrackListResponse` shape from `/api/user/track` and `/api/user/track/refresh`: `{ generatedAt, summary, items }`.
+- Convert PostgreSQL `numeric` strings to JavaScript numbers before returning JSON.
+- Refresh P&L only when today's snapshot is missing, except when user explicitly presses refresh.
 
 ---
 
@@ -140,6 +150,16 @@ export async function migrate() {
       unique (track_id, snapshot_date)
     )
   `)
+}
+```
+
+Add startup helper:
+
+```js
+export async function migrateIfConfigured() {
+  if (!hasDatabase()) return false
+  await migrate()
+  return true
 }
 ```
 
@@ -312,6 +332,12 @@ export function requireUser(upsertUser) {
     }
   }
 }
+
+export function asyncRoute(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next)
+  }
+}
 ```
 
 - [ ] **Step 3: Verify**
@@ -442,10 +468,19 @@ export async function listUserTracks(userId) {
     `,
     [userId],
   )
-  return r.rows.map((row) => ({
-    ...row,
-    evalDueOn: addTradingSessionsFromEntry(row.entryDate, 5),
-  }))
+  return r.rows.map((row) => {
+    const entryPrice = Number(row.entryPrice)
+    const markPrice = row.markPrice == null ? null : Number(row.markPrice)
+    const pnlPercent = row.pnlPercent == null ? null : Number(row.pnlPercent)
+    return {
+      ...row,
+      entryPrice: Number.isFinite(entryPrice) ? entryPrice : 0,
+      markPrice: markPrice != null && Number.isFinite(markPrice) ? markPrice : null,
+      pnlPercent:
+        pnlPercent != null && Number.isFinite(pnlPercent) ? pnlPercent : null,
+      evalDueOn: addTradingSessionsFromEntry(row.entryDate, 5),
+    }
+  })
 }
 
 export async function upsertTrackSnapshot(trackId, mark) {
@@ -473,7 +508,8 @@ export async function upsertTrackSnapshot(trackId, mark) {
 Import:
 
 ```js
-import { requireUser } from './auth.mjs'
+import { asyncRoute, requireUser } from './auth.mjs'
+import { migrateIfConfigured } from './db.mjs'
 import {
   addUserTrack,
   addWatchlistItem,
@@ -486,6 +522,23 @@ import {
 } from './userStore.mjs'
 ```
 
+Before `app.listen(...)`, run migration:
+
+```js
+await migrateIfConfigured()
+```
+
+Add an Express error handler before the SPA/static fallback:
+
+```js
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err)
+  res.status(err.status ?? 500).json({
+    detail: err instanceof Error ? err.message : 'Lỗi máy chủ',
+  })
+})
+```
+
 Add routes after `app.use(express.json())`:
 
 ```js
@@ -495,39 +548,39 @@ app.get('/api/me', userOnly, (req, res) => {
   res.json({ user: req.auth.user })
 })
 
-app.get('/api/user/watchlist', userOnly, async (req, res) => {
+app.get('/api/user/watchlist', userOnly, asyncRoute(async (req, res) => {
   res.json({ items: await listWatchlist(req.auth.user.id) })
-})
+}))
 
-app.post('/api/user/watchlist', userOnly, async (req, res) => {
+app.post('/api/user/watchlist', userOnly, asyncRoute(async (req, res) => {
   const item = await addWatchlistItem(req.auth.user.id, req.body?.symbol)
   res.json({ ok: true, item })
-})
+}))
 
-app.delete('/api/user/watchlist/:symbol', userOnly, async (req, res) => {
+app.delete('/api/user/watchlist/:symbol', userOnly, asyncRoute(async (req, res) => {
   const removed = await deleteWatchlistItem(req.auth.user.id, req.params.symbol)
   res.json({ ok: true, removed })
-})
+}))
 
-app.get('/api/user/track', userOnly, async (req, res) => {
-  await refreshUserTrackMarks(req.auth.user.id)
-  res.json({ generatedAt: new Date().toISOString(), items: await listUserTracks(req.auth.user.id) })
-})
+app.get('/api/user/track', userOnly, asyncRoute(async (req, res) => {
+  await refreshUserTrackMarks(req.auth.user.id, false)
+  res.json(await buildUserTrackResponse(req.auth.user.id))
+}))
 
-app.post('/api/user/track', userOnly, async (req, res) => {
+app.post('/api/user/track', userOnly, asyncRoute(async (req, res) => {
   const item = await addUserTrack(req.auth.user.id, req.body ?? {})
   res.json({ ok: true, item })
-})
+}))
 
-app.delete('/api/user/track/:id', userOnly, async (req, res) => {
+app.delete('/api/user/track/:id', userOnly, asyncRoute(async (req, res) => {
   const removed = await deleteUserTrack(req.auth.user.id, req.params.id)
   res.json({ ok: true, removed })
-})
+}))
 
-app.post('/api/user/track/refresh', userOnly, async (req, res) => {
+app.post('/api/user/track/refresh', userOnly, asyncRoute(async (req, res) => {
   await refreshUserTrackMarks(req.auth.user.id, true)
-  res.json({ ok: true, items: await listUserTracks(req.auth.user.id) })
-})
+  res.json(await buildUserTrackResponse(req.auth.user.id))
+}))
 ```
 
 - [ ] **Step 3: Add refresh helper near `fetchMarkForTrack`**
@@ -535,9 +588,32 @@ app.post('/api/user/track/refresh', userOnly, async (req, res) => {
 Use existing `fetchMarkForTrack` and `listUserTracks`:
 
 ```js
-async function refreshUserTrackMarks(userId) {
+function summarizeTracks(items) {
+  const evalReady = items.filter((x) => x.signalCorrect != null)
+  const correct = evalReady.filter((x) => x.signalCorrect === true)
+  return {
+    total: items.length,
+    evalReadyCount: evalReady.length,
+    correctCount: correct.length,
+    winRatePercent: evalReady.length
+      ? Math.round((correct.length / evalReady.length) * 10000) / 100
+      : null,
+  }
+}
+
+async function buildUserTrackResponse(userId) {
+  const items = await listUserTracks(userId)
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: summarizeTracks(items),
+    items,
+  }
+}
+
+async function refreshUserTrackMarks(userId, force = false) {
   const tracks = await listUserTracks(userId)
   for (const row of tracks) {
+    if (!force && row.snapshotDate === todayVN()) continue
     try {
       const mark = await fetchMarkForTrack(row.symbol)
       await upsertTrackSnapshot(row.id, {
@@ -585,6 +661,7 @@ git commit -m "feat(auth): add protected user watchlist and track APIs"
 **Files:**
 - Modify: `frontend/package.json`
 - Create: `frontend/src/authConfig.ts`
+- Create: `frontend/src/AuthRoot.tsx`
 - Create: `frontend/src/authClient.ts`
 - Modify: `frontend/src/main.tsx`
 - Modify: `frontend/src/types.ts`
@@ -636,25 +713,23 @@ export async function fetchAuthJson<T>(
 }
 ```
 
-- [ ] **Step 4: Wrap app in `Auth0Provider`**
+- [ ] **Step 4: Wrap app in `AuthRoot`**
 
-Modify `frontend/src/main.tsx`:
+Create `frontend/src/AuthRoot.tsx`:
 
 ```tsx
 import { Auth0Provider } from '@auth0/auth0-react'
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import { useAuth0 } from '@auth0/auth0-react'
 import App from './App'
 import { auth0Config, isAuthConfigured } from './authConfig'
 
-const app = (
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+function AppWithAuth() {
+  return <App authConfigured auth={useAuth0()} />
+}
 
-createRoot(document.getElementById('root')!).render(
-  isAuthConfigured ? (
+export function AuthRoot() {
+  if (!isAuthConfigured) return <App authConfigured={false} auth={null} />
+  return (
     <Auth0Provider
       domain={auth0Config.domain}
       clientId={auth0Config.clientId}
@@ -664,11 +739,23 @@ createRoot(document.getElementById('root')!).render(
       }}
       cacheLocation="localstorage"
     >
-      {app}
+      <AppWithAuth />
     </Auth0Provider>
-  ) : (
-    app
-  ),
+  )
+}
+```
+
+Modify `frontend/src/main.tsx`:
+
+```tsx
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { AuthRoot } from './AuthRoot'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <AuthRoot />
+  </StrictMode>,
 )
 ```
 
@@ -706,7 +793,7 @@ Expected: TypeScript succeeds when Auth0 env vars are absent.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/package.json frontend/package-lock.json frontend/src/authConfig.ts frontend/src/authClient.ts frontend/src/main.tsx frontend/src/types.ts
+git add frontend/package.json frontend/package-lock.json frontend/src/authConfig.ts frontend/src/AuthRoot.tsx frontend/src/authClient.ts frontend/src/main.tsx frontend/src/types.ts
 git commit -m "feat(auth): add Auth0 frontend provider and API helper"
 ```
 
@@ -724,22 +811,28 @@ git commit -m "feat(auth): add Auth0 frontend provider and API helper"
 In `App.tsx`, add:
 
 ```ts
-import { useAuth0 } from '@auth0/auth0-react'
+import type { Auth0ContextInterface, User } from '@auth0/auth0-react'
 import { fetchAuthJson } from './authClient'
-import { isAuthConfigured } from './authConfig'
 ```
 
-Add inside `App()`:
+Change `App` signature and derive auth values from props:
 
 ```ts
-const {
-  isAuthenticated,
-  isLoading: authLoading,
-  user,
-  loginWithRedirect,
-  logout,
-  getAccessTokenSilently,
-} = useAuth0()
+type AppAuth = Auth0ContextInterface<User> | null
+
+function App({
+  authConfigured = false,
+  auth = null,
+}: {
+  authConfigured?: boolean
+  auth?: AppAuth
+}) {
+const isAuthenticated = Boolean(auth?.isAuthenticated)
+const authLoading = Boolean(auth?.isLoading)
+const user = auth?.user
+const loginWithRedirect = auth?.loginWithRedirect
+const logout = auth?.logout
+const getAccessTokenSilently = auth?.getAccessTokenSilently
 const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null)
 ```
 
@@ -749,7 +842,7 @@ Add near the top of the rendered app:
 
 ```tsx
 <div className="auth-bar">
-  {!isAuthConfigured ? (
+  {!authConfigured ? (
     <span className="auth-muted">Auth0 chưa cấu hình</span>
   ) : authLoading ? (
     <span className="auth-muted">Đang kiểm tra đăng nhập…</span>
@@ -758,14 +851,14 @@ Add near the top of the rendered app:
       {user?.picture && <img className="auth-avatar" src={user.picture} alt="" />}
       <span className="auth-user">{user?.name ?? user?.email ?? 'Tài khoản'}</span>
       {currentUser?.user.role === 'admin' && <span className="auth-role">Admin</span>}
-      <button type="button" onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}>
+      <button type="button" onClick={() => logout?.({ logoutParams: { returnTo: window.location.origin } })}>
         Đăng xuất
       </button>
     </>
   ) : (
     <>
-      <button type="button" onClick={() => loginWithRedirect()}>Đăng nhập</button>
-      <button type="button" onClick={() => loginWithRedirect({ authorizationParams: { screen_hint: 'signup' } })}>
+      <button type="button" onClick={() => void loginWithRedirect?.()}>Đăng nhập</button>
+      <button type="button" onClick={() => void loginWithRedirect?.({ authorizationParams: { screen_hint: 'signup' } })}>
         Đăng ký
       </button>
     </>
@@ -780,7 +873,7 @@ Add effect:
 ```ts
 useEffect(() => {
   let cancelled = false
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !getAccessTokenSilently) {
     setCurrentUser(null)
     return
   }

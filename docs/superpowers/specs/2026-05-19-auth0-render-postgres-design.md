@@ -51,7 +51,7 @@ Social connections:
 
 - Google OAuth2 cho Gmail.
 - Facebook Login.
-- LINE Login qua OIDC/OAuth connection trong Auth0.
+- LINE Login qua custom social/OIDC connection trong Auth0; cần cấu hình LINE Developers riêng, gồm callback URL do Auth0 cung cấp.
 
 Tài khoản admin ban đầu:
 
@@ -116,6 +116,11 @@ signal_track_snapshots (
 )
 ```
 
+Migration:
+
+- Khi app khởi động trên Render, nếu có `DATABASE_URL` thì backend chạy migration idempotent trước khi listen.
+- Nếu migration lỗi, server không nên tiếp tục chạy với DB nửa cấu hình; log lỗi rõ để Render deploy fail sớm.
+
 ## Backend API
 
 Public API hiện có vẫn giữ cho xem chart/picks cơ bản.
@@ -137,6 +142,8 @@ Phân quyền:
 - Backend chỉ thao tác dữ liệu có `user_id` khớp user trong token.
 - Không tin user id gửi từ client.
 - Role admin lấy từ `ADMIN_EMAILS`, không lấy từ request body.
+
+Response `/api/user/track` và `/api/user/track/refresh` phải cùng shape với `TrackListResponse`: `{ generatedAt, summary, items }`. Các số từ PostgreSQL (`numeric`) được convert về `number | null` trước khi trả frontend.
 
 ## Cập nhật lãi/lỗ khi mở trang
 
@@ -183,6 +190,7 @@ Thống kê tín hiệu:
 - Token hết hạn: frontend tự lấy token mới qua Auth0 SDK; nếu thất bại thì yêu cầu đăng nhập lại.
 - PostgreSQL lỗi: API trả JSON `{ detail }`, frontend hiển thị lỗi thân thiện.
 - Provider giá lỗi: track vẫn hiển thị, snapshot của mã lỗi có `mark_price = null` và thông báo không cập nhật được.
+- Async route backend luôn bọc `try/catch` hoặc dùng wrapper để Express 4 không tạo unhandled rejection.
 
 ## Testing
 
@@ -199,7 +207,7 @@ Kiểm thử cần có:
 ## Ngoài phạm vi giai đoạn này
 
 - Cron cập nhật lãi/lỗ tự động hằng ngày.
-- Phân quyền admin.
+- Màn hình quản trị/admin API nâng cao.
 - Thanh toán/subscription.
 - Đồng bộ dữ liệu cũ từ `server/data/signal-track.json` vào PostgreSQL tự động.
 
