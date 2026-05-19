@@ -34,6 +34,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Tránh lỗi mơ hồ "Could not load credentials from any providers"
+      # khi chưa tạo Repository secrets hoặc nhập sai tên biến.
+      - name: Kiểm tra AWS Secrets trên GitHub
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "${AWS_ACCESS_KEY_ID}" ] || [ -z "${AWS_SECRET_ACCESS_KEY}" ]; then
+            echo "::error title=Thiếu AWS credentials::Repository chưa có đủ Secrets cho IAM access key."
+            echo ""
+            echo "Làm trên GitHub: Repo → Settings → Secrets and variables → Actions"
+            echo "→ New repository secret — thêm ĐÚNG hai tên sau:"
+            echo "  • AWS_ACCESS_KEY_ID"
+            echo "  • AWS_SECRET_ACCESS_KEY"
+            echo ""
+            echo "(Không dùng Environment secrets trừ khi workflow khai báo environment.)"
+            exit 1
+          fi
+          echo "OK: đã có AWS_ACCESS_KEY_ID và AWS_SECRET_ACCESS_KEY."
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

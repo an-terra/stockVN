@@ -181,6 +181,7 @@ Thay **`THAY_BẰNG_SERVICE_ARN_CỦA_BẠN`** đúng một dòng ARN (có dấu
 
 | Hiện tượng | Việc nên làm |
 |------------|----------------|
+| `Credentials could not be loaded` / `Could not load credentials from any providers` | **Chưa có hoặc sai tên Secrets.** Vào **Repo → Settings → Secrets and variables → Actions** → tab **Secrets** → đảm bảo có đúng hai secret **Repository** (không chỉ Environment): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`. Tên phải khớp **từng ký tự** (không thêm khoảng trắng, không đổi hoa/thường). Sau đó **Re-run jobs** workflow. Nếu workflow fork từ repo khác hoặc PR từ fork: secrets không được chia sẻ — chạy trên nhánh trong repo của bạn. |
 | CI báo `denied` / `Unauthorized` khi push ECR | Kiểm tra region; IAM user có policy ECR; secret GitHub đúng user đó. |
 | App Runner **Failed** / health đỏ | Xem tab **Logs** của App Runner; thử đổi **Port** (8000 ↔ 8080) khớp với biến `PORT` trong log container. |
 | Trắng trang nhưng API được | Kiểm tra build frontend trong Docker log CI; đảm bảo có `frontend/dist` trong image. |
