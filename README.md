@@ -37,7 +37,7 @@ Mở `http://localhost:5173`. Vite proxy chuyển `/api` → cổng 8000.
 
 - **CI**: `.github/workflows/ci.yml` — **push / PR** `main`: lint + build frontend, **Docker build** thử.
 - **`Dockerfile`**: một image API + SPA (`frontend/dist`).
-- **Render**: [`docs/HUONG_DAN_RENDER.md`](docs/HUONG_DAN_RENDER.md) — Web Service (**Docker**) hoặc Blueprint **`render.yaml`**; auto-deploy từ Git (không cần AWS).
+- **Render**: [`docs/HUONG_DAN_RENDER.md`](docs/HUONG_DAN_RENDER.md) — Web Service (**Docker**) / **`render.yaml`**; CD qua Auto Deploy Render hoặc **Deploy Hook** (secret `RENDER_DEPLOY_HOOK_URL`) + `.github/workflows/deploy-render.yml`.
 - **AWS** (tuỳ chọn): `.github/workflows/deploy-aws.yml` + [`docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md`](docs/HUONG_DAN_TRIEN_KHAI_CHI_TIET.md), [`docs/DEPLOY_AWS.md`](docs/DEPLOY_AWS.md).
 
 ## Rule (EOD)

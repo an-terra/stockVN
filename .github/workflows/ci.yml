@@ -1,5 +1,5 @@
 # CI: kiểm tra mỗi push / PR vào main — không cần AWS Secrets.
-# CD (deploy): workflow Deploy AWS (.github/workflows/deploy-aws.yml).
+# CD: Deploy AWS (.github/workflows/deploy-aws.yml) hoặc Deploy Hook Render (deploy-render.yml).
 
 name: CI
 

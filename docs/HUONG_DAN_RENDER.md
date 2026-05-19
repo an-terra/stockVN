@@ -27,6 +27,38 @@
 
 ---
 
+## CI/CD đâu có “Environment Variables” trên Render?
+
+Đây là chỗ hay nhầm:
+
+| Chỗ | Việc dùng cho CI/CD |
+|-----|---------------------|
+| **Environment Variables trên Render** (`Dashboard → service → Environment`) | Chỉ cho **ứng dụng đang chạy trong container**: `PORT`, `CORS_ORIGINS`, … **Không** dùng để GitHub Actions đăng nhập hay “bật” pipeline CI. |
+| **GitHub Secrets** (`repo GitHub → Settings → Secrets → Actions`) | Dùng cho **GitHub Actions**: ví dụ `AWS_*` (workflow deploy ECR/AWS), **`RENDER_DEPLOY_HOOK_URL`** (workflow deploy Render sau CI). |
+| **Kết nối Git repo trên Render** | Render tự clone + build → đó là **CD** không cần thêm Env trên Render cho “kéo Git”. Chỉ cần OAuth GitHub trong Render và bật **Auto Deploy**. |
+
+### Hai kiểu CD với Render (chọn một rõ ràng)
+
+1. **Chỉ Auto Deploy Render (đơn giản)**  
+   Render nối GitHub → mỗi push `main` Render build lại Docker. Repo vẫn chạy **CI** `.github/workflows/ci.yml` để lint/build và **không** cần nhập Env đặc biệt trên Render cho CI/CD.  
+   *Lưu ý:* có thể build trên Render chạy **song song** lúc push; CI trên Actions là cổng chất lượng (PR/build thử Docker), không ngăn Render build.
+
+2. **CI xong mới Deploy (chuẩn “CI rồi mới CD”)**  
+   - Trên Render: **Tắt Auto Deploy**.  
+   - Tạo **Deploy Hook**: service → **Settings** → **Build & Deploy** → **Deploy Hooks** ([docs](https://render.com/docs/deploy-hooks)).  
+   - Trên GitHub: thêm secret **`RENDER_DEPLOY_HOOK_URL`** = URL hook.  
+   - Workflow cụ repository: `.github/workflows/deploy-render.yml` — chỉ POST hook **sau khi** workflow **`CI`** trên **`main`** kết luận **success**.  
+
+Nếu vừa bật **Auto Deploy** vừa có **Deploy Hook** từ Actions, một push có thể khiến **deploy hai lần** — chỉ giữ một cách.
+
+### Tóm lại
+
+- Muốn “có CI/CD” với Render: **đủ repo + Render nối Git + CI trong Actions**. **Không bắt buộc** khai báo thêm Env trên Render cho mục đích đó.  
+- **`ENV` trên Render** chỉ là khi app **runtime** của bạn cần (`CORS_ORIGINS`, không đụng `PORT` tay, … đã nói ở dưới).  
+- **GitHub Secrets** mới là chỗ chứa “mật mã để Actions kích hoạt deploy” (hook, AWS keys, …).
+
+---
+
 ## Biến môi trường (Environment Variables)
 
 Trong Render: vào Web Service của bạn → tab **Environment** → **Environment Variables**. Có thể bật **Secret** để không hiển thị lại plaintext sau khi lưu ([Env docs](https://render.com/docs/configure-environment-variables)).

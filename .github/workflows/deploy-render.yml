@@ -1,0 +1,44 @@
+# CD Render (tuỳ chọn): sau khi workflow "CI" trên nhánh main thành công,
+# gửi POST tới Deploy Hook của Render để ép build/deploy.
+#
+# KHÁC với Environment Variables trên Dashboard Render — đây là GitHub Secrets.
+#
+# 1) Render Dashboard → Web Service → Settings → Build & Deploy → Deploy Hook → tạo URL.
+# 2) GitHub → repo → Settings → Secrets → Actions → thêm secret:
+#       RENDER_DEPLOY_HOOK_URL  = URL hook (paste nguyên)
+#
+# Khuyến nghị: nếu dùng hook này, TẮT "Auto Deploy" trên Render (tránh deploy 2 lần/push).
+
+name: Deploy Render
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-hook:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push'
+        && github.event.workflow_run.head_branch == 'main'
+        && github.event.workflow_run.head_repository.full_name == github.repository
+      }}
+    steps:
+      - name: Gọi Deploy Hook (nếu đã cấu hình)
+        env:
+          HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "${HOOK_URL}" ]; then
+            echo "::notice::RENDER_DEPLOY_HOOK_URL chưa đặt — bỏ qua."
+            echo "Nếu bạn đang dùng Auto Deploy trên Render (kéo repo GitHub): không bắt buộc secret này."
+            exit 0
+          fi
+          curl -fsS -X POST "${HOOK_URL}"
+          echo "Đã POST Deploy Hook."
