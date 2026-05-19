@@ -92,6 +92,11 @@ body {
   border: 1px solid var(--border);
 }
 
+.auth-avatar.large {
+  width: 44px;
+  height: 44px;
+}
+
 .auth-user {
   color: var(--heading);
   font-size: 0.85rem;
@@ -121,6 +126,65 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.login-page {
+  min-height: calc(100vh - 2rem);
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+.login-card {
+  width: min(100%, 520px);
+  background: linear-gradient(145deg, rgba(24, 26, 34, 0.96), rgba(18, 19, 26, 0.98));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+}
+
+.login-card h1 {
+  margin: 0 0 0.5rem;
+}
+
+.login-copy {
+  margin: 0 0 1.25rem;
+  color: var(--text);
+}
+
+.login-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.secondary-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.login-warning {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.login-warning p {
+  margin: 0.45rem 0 0;
+}
+
+.login-user-box {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
 }
 
 .banner {

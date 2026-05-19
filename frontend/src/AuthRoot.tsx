@@ -19,6 +19,10 @@ function AuthenticatedApp() {
     isAuthLoading: isLoading,
     authUser: user,
     login: () => void loginWithRedirect(),
+    signup: () =>
+      void loginWithRedirect({
+        authorizationParams: { screen_hint: 'signup' },
+      }),
     logout: () => void logout({ logoutParams: { returnTo: window.location.origin } }),
     getAccessToken: getAccessTokenSilently,
   }

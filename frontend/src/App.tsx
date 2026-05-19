@@ -87,12 +87,86 @@ function normalizeWatchSymbol(symbol: string) {
   return symbol.trim().toUpperCase().replace(/\.VN$/i, '').slice(0, 16)
 }
 
+function LoginPage({
+  isAuthConfigured,
+  isAuthenticated,
+  isAuthLoading,
+  authUser,
+  currentUser,
+  login,
+  signup,
+  logout,
+  goHome,
+}: Pick<
+  AuthAppProps,
+  'isAuthConfigured' | 'isAuthenticated' | 'isAuthLoading' | 'authUser' | 'login' | 'signup' | 'logout'
+> & {
+  currentUser: CurrentUserResponse['user'] | null
+  goHome: () => void
+}) {
+  return (
+    <div className="login-page">
+      <section className="login-card" aria-label="Đăng nhập VN Stock">
+        <p className="current-signal-kicker">VN Stock Account</p>
+        <h1>Đăng nhập / đăng ký</h1>
+        <p className="login-copy">
+          Đăng nhập để lưu watchlist theo tài khoản, lưu bối cảnh khuyến nghị và cập nhật lãi/lỗ
+          hằng ngày cho bảng tổng kết tín hiệu.
+        </p>
+
+        {!isAuthConfigured ? (
+          <div className="login-warning" role="alert">
+            <strong>Auth0 chưa được cấu hình cho bản build hiện tại.</strong>
+            <p>
+              Trên Render cần thêm `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`,
+              `VITE_AUTH0_AUDIENCE`, rồi deploy lại bằng Clear build cache.
+            </p>
+          </div>
+        ) : isAuthLoading ? (
+          <p className="muted">Đang kiểm tra phiên đăng nhập…</p>
+        ) : isAuthenticated ? (
+          <div className="login-user-box">
+            {authUser?.picture && <img className="auth-avatar large" src={authUser.picture} alt="" />}
+            <div>
+              <strong>{currentUser?.name ?? authUser?.name ?? currentUser?.email ?? 'User'}</strong>
+              <p className="muted small">
+                {currentUser?.role === 'admin' ? 'Tài khoản admin' : 'Đã đăng nhập'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="login-actions">
+            <button type="button" className="scan-btn" onClick={login}>
+              Đăng nhập
+            </button>
+            <button type="button" className="scan-btn secondary" onClick={signup}>
+              Đăng ký tài khoản
+            </button>
+          </div>
+        )}
+
+        <div className="login-actions secondary-actions">
+          {isAuthenticated && (
+            <button type="button" className="scan-btn secondary" onClick={logout}>
+              Đăng xuất
+            </button>
+          )}
+          <button type="button" className="scan-btn secondary" onClick={goHome}>
+            Quay lại bảng chứng khoán
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 function App({
   isAuthConfigured,
   isAuthenticated = false,
   isAuthLoading = false,
   authUser,
   login,
+  signup,
   logout,
   getAccessToken,
 }: AuthAppProps) {
@@ -138,6 +212,18 @@ function App({
   const [currentUser, setCurrentUser] =
     useState<CurrentUserResponse['user'] | null>(null)
   const [authErr, setAuthErr] = useState<string | null>(null)
+  const [routePath, setRoutePath] = useState(() => window.location.pathname)
+
+  const navigateTo = useCallback((path: string) => {
+    window.history.pushState({}, '', path)
+    setRoutePath(path)
+  }, [])
+
+  useEffect(() => {
+    const onPopState = () => setRoutePath(window.location.pathname)
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -570,6 +656,22 @@ function App({
     [getAccessToken, isAuthenticated],
   )
 
+  if (routePath === '/login') {
+    return (
+      <LoginPage
+        isAuthConfigured={isAuthConfigured}
+        isAuthenticated={isAuthenticated}
+        isAuthLoading={isAuthLoading}
+        authUser={authUser}
+        currentUser={currentUser}
+        login={login}
+        signup={signup}
+        logout={logout}
+        goHome={() => navigateTo('/')}
+      />
+    )
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -621,7 +723,13 @@ function App({
           </div>
           <div className="auth-bar">
             {!isAuthConfigured ? (
-              <span className="auth-muted">Chưa cấu hình Auth0</span>
+              <button
+                type="button"
+                className="scan-btn secondary tight"
+                onClick={() => navigateTo('/login')}
+              >
+                Đăng nhập / đăng ký
+              </button>
             ) : isAuthLoading ? (
               <span className="auth-muted">Đang kiểm tra đăng nhập…</span>
             ) : isAuthenticated ? (
@@ -640,7 +748,11 @@ function App({
                 </button>
               </>
             ) : (
-              <button type="button" className="scan-btn secondary tight" onClick={login}>
+              <button
+                type="button"
+                className="scan-btn secondary tight"
+                onClick={() => navigateTo('/login')}
+              >
                 Đăng nhập / đăng ký
               </button>
             )}

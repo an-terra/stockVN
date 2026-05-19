@@ -238,6 +238,7 @@ export type AuthAppProps = {
   isAuthLoading?: boolean
   authUser?: User
   login?: () => void
+  signup?: () => void
   logout?: () => void
   getAccessToken?: () => Promise<string>
 }
